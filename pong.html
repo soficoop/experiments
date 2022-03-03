@@ -1,0 +1,159 @@
+<!-- pong game -->
+<html>
+<head>
+<title>Pong</title>
+<style>
+body {
+    background-color: #000;
+    color: #fff;
+    text-align: center;
+    font-family: "Helvetica", sans-serif;
+    font-size: 1.5em;
+}
+</style>
+</head>
+<body>
+<h1>Pong</h1>
+<p>
+<canvas id="pong" width="800" height="600"></canvas>
+</p>
+<script>
+var canvas = document.getElementById("pong");
+var context = canvas.getContext("2d");
+var ball = {
+    x: canvas.width/2,
+    y: canvas.height/2,
+    radius: 10,
+    speed: 5,
+    dx: 5,
+    dy: 5,
+    draw: function() {
+        context.beginPath();
+        context.arc(this.x, this.y, this.radius, 0, Math.PI*2, false);
+        context.fillStyle = "#fff";
+        context.fill();
+    }
+};
+var player = {
+    x: 0,
+    y: canvas.height/2,
+    width: 10,
+    height: 100,
+    speed: 15,
+    score: 0,
+    draw: function() {
+        context.fillStyle = "#fff";
+        context.fillRect(this.x, this.y, this.width, this.height);
+    }
+};
+var computer = {
+    x: canvas.width - 10,
+    y: canvas.height/2,
+    width: 10,
+    height: 100,
+    speed: 15,
+    score: 0,
+
+    draw: function() {
+        context.fillStyle = "#fff";
+        context.fillRect(this.x, this.y, this.width, this.height);
+    }
+};
+var net = {
+    x: (canvas.width - 2)/2,
+    y: 0,
+    width: 2,
+    height: 10,
+    draw: function() {
+        context.fillStyle = "#fff";
+        context.fillRect(this.x, this.y, this.width, this.height);
+    }
+};
+var keysDown = {};
+window.addEventListener("keydown", function(event) {
+    keysDown[event.keyCode] = true;
+});
+window.addEventListener("keyup", function(event) {
+    delete keysDown[event.keyCode];
+});
+var reset = function() {
+    ball.x = canvas.width/2;
+    ball.y = canvas.height/2;
+    ball.dx = -ball.dx;
+    ball.dy = -ball.dy;
+    ball.speed = 5;
+    // player.score = 0;
+    // computer.score = 0;
+}
+var update = function() {
+    if (38 in keysDown) { // Player holding up
+        player.y -= player.speed;
+    }
+    if (40 in keysDown) { // Player holding down
+        player.y += player.speed;
+    }
+    if (player.y < 0) {
+        player.y = 0;
+    } 
+    if (player.y > canvas.height - player.height) {
+        player.y = canvas.height - player.height;
+    } 
+    if (ball.x - ball.radius < 0) {
+        if (ball.y > player.y && ball.y < player.y + player.height) {
+            ball.dx = -ball.dx;
+            ball.speed += 0.5;
+        } else {
+            computer.score++;
+            reset();
+        }
+    }
+    if (ball.x + ball.radius > canvas.width) {
+        if (ball.y > computer.y && ball.y < computer.y + computer.height) {
+            ball.dx = -ball.dx;
+            ball.speed += 0.5;
+        } else {
+            player.score++;
+            reset();
+        }
+    }
+    if (ball.y - ball.radius < 0) {
+        ball.dy = -ball.dy;
+    }
+    if (ball.y + ball.radius > canvas.height) {
+        ball.dy = -ball.dy;
+    }
+    ball.x += ball.dx;
+    ball.y += ball.dy;
+}
+var render = function() {
+    context.fillStyle = "#000";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    ball.draw();
+    player.draw();
+    computer.draw();
+    net.draw();
+    context.fillStyle = "#fff";
+    context.font = "16px Helvetica";
+    context.fillText(player.score, 100, 100);
+    context.fillText(computer.score, canvas.width - 100, 100);
+}
+// make computer respond to ball and sometimes miss
+var computerAI = function() {
+    if (ball.x > (canvas.width/2) + (canvas.width/4)) {
+        if (computer.y + computer.height/1.1 < ball.y - ball.radius) {
+            computer.y += computer.speed * Math.random();
+        } else if (computer.y + computer.height/1.1 > ball.y + ball.radius) {
+            computer.y -= computer.speed * Math.random();
+        }
+    }
+}
+
+var step = function() {
+    update();
+    computerAI();
+    render();
+}
+setInterval(step, 10);
+</script>
+</body>
+</html>
