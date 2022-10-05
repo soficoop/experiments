@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Percolation</title>
+</head>
+<body style="margin:0">
+  <div style="position:absolute;top:8px;left:8px;z-index: 2;background-color: white; width:24px">
+    <input id="p" type="number" max="1" min="0" placeholder="P="  value="0.5" style="width:40px" step="0.05" oninput="start()">
+    <input id="size" type="number" min="10" max="1000" placeholder="size"  value="200" style="width:40px" step="50" onchange="start()">
+  </div>
+  <canvas id="canvas" style="height:100vh;width:100vw;position:absolute;top:8;left:8"/>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width = window.innerWidth;
+    const height = canvas.height = window.innerHeight;
+    let grid = [];
+    let colors = [];
+    let size = 0;
+    function getOpenNeighborColor(i, j) {
+      const neighbors = []
+      const up = i > 0 && colors[i - 1][j];
+      const left = j > 0 && colors[i][j - 1];
+      const down = i < size - 1 && colors[i + 1][j];
+      const right = j < size - 1 && colors[i][j + 1];
+      right &&   neighbors.push(right);
+      up && neighbors.push(up);
+      left && neighbors.push(left);
+      down && neighbors.push(down);
+      return neighbors[Math.floor(Math.random() * neighbors.length)];
+    }
+    function drawCell(i,j) {
+      const randomColor = `hsl(${Math.random() * 360}, ${20+Math.random()*70}%, ${20+Math.random()*70}%)`;
+      const cellFill = (grid[i][j] && getOpenNeighborColor(i,j)) || randomColor;
+      colors[i][j] = cellFill;
+      ctx.fillStyle = cellFill;
+      ctx.strokeStyle = cellFill;
+      ctx.fillRect(i * width / size, j * width / size, width / size, width / size);
+      ctx.strokeRect(i * width / size, j * width / size, width / size, width / size);
+    }
+    function draw() {
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = 'white';
+      for (let i = 0; i < size; i++) {
+        for (let j = 0; j < size; j++) {
+          drawCell(i,j)
+          drawCell(size-1-i,j)
+          drawCell(i,size-1-j)
+          drawCell(size-1-i,size-1-j)
+        }
+      }
+    };
+    function init() {
+      size = +document.getElementById('size').value;
+      for (let i = 0; i < size; i++) {
+        grid[i] = [];
+        colors[i] = [];
+        for (let j = 0; j < size; j++) {
+          grid[i][j] = Math.random() < +document.getElementById('p').value;
+          colors[i][j] = 0;
+        }
+      }
+      draw();
+    };
+    const start = () => {
+      grid = [];
+      init();
+    };
+    start();
+
+  </script>
+</body>
+</html>
