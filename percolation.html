@@ -45,12 +45,9 @@
     function draw() {
       ctx.clearRect(0, 0, width, height);
       ctx.fillStyle = 'white';
-      for (let i = 0; i < size / 2; i++) {
-        for (let j = 0; j < size / 2; j++) {
-          drawCell(i,j)
-          drawCell(size-1-i,j)
-          drawCell(i,size-1-j)
-          drawCell(size-1-i,size-1-j)
+      for (let i = 0; i < size; i++) {
+        for (let j = 0; j < size; j++) {
+          drawCell(i,j);
         }
       }
     };
