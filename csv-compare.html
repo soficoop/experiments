@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CSV Diff Validator</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      margin: 1.25rem;
+      line-height: 1.4;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      margin: 0 0 1rem;
+    }
+
+    fieldset {
+      border: 1px solid #8883;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+    }
+
+    legend {
+      padding: 0 0.25rem;
+      font-weight: 600;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.25rem;
+      align-items: center;
+    }
+
+    .row>label {
+      display: flex;
+      flex-direction: column;
+      font-size: 0.92rem;
+      gap: 0.25rem;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      padding: 0.4rem 0.5rem;
+      min-width: 12rem;
+    }
+
+    input[type="file"] {
+      min-width: 18rem;
+    }
+
+    .btns {
+      display: flex;
+      gap: 0.75rem;
+      margin: 0.5rem 0 1rem;
+    }
+
+    button {
+      padding: 0.5rem 0.9rem;
+      border-radius: 6px;
+      border: 1px solid #8884;
+      background: #2d6cdf;
+      color: white;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: transparent;
+      color: inherit;
+    }
+
+    .out {
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      border: 1px solid #8883;
+      border-radius: 8px;
+      padding: 0.75rem;
+      min-height: 7rem;
+    }
+
+    .ok {
+      color: #167c33;
+    }
+
+    .err {
+      color: #ac2b2b;
+    }
+
+    .muted {
+      opacity: 0.8;
+      font-size: 0.95em;
+    }
+
+    .inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .note {
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>CSV Diff Validator</h1>
+
+  <form id="form" onsubmit="return false;">
+    <fieldset>
+      <legend>Files</legend>
+      <div class="row">
+        <label>Before CSV<input type="file" id="fileBefore" accept=".csv,text/csv,.txt" required /></label>
+        <label>After CSV<input type="file" id="fileAfter" accept=".csv,text/csv,.txt" required /></label>
+        <label>Delimiter<input type="text" id="delimiter" value="," maxlength="3" /></label>
+        <label class="inline"><input type="checkbox" id="hasHeader" /> Has header</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Allowed differences</legend>
+      <div class="row">
+        <label class="inline"><input type="radio" name="allowMode" value="last" checked /> Only last column</label>
+        <label class="inline"><input type="radio" name="allowMode" value="indexes" /> Only columns (1-based): <input
+            type="text" id="allowIndexes" placeholder="e.g. 2,5,9" /></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Normalization and comparison</legend>
+      <div class="row">
+        <label class="inline"><input type="checkbox" id="trim" checked /> Trim values</label>
+        <label class="inline"><input type="checkbox" id="ci" /> Case-insensitive</label>
+        <label class="inline"><input type="checkbox" id="normalizeNewlines" checked /> Normalize newlines (\r\n, \r, \n
+          → \n)</label>
+        <label class="inline"><input type="checkbox" id="collapseWS" /> Collapse whitespace</label>
+        <label class="inline"><input type="checkbox" id="numericAuto" checked /> Auto-detect numeric columns</label>
+        <label>Numeric columns (1-based, optional)<input type="text" id="numericCols" placeholder="e.g. 5,6" /></label>
+        <label>Epsilon<input type="number" id="epsilon" step="any" value="1e-9" /></label>
+        <label class="inline"><input type="checkbox" id="stripCommas" checked /> Strip thousands separators</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Reporting</legend>
+      <div class="row">
+        <label>Max errors to show<input type="number" id="maxErrors" min="1" value="200" /></label>
+      </div>
+    </fieldset>
+
+    <div class="btns">
+      <button id="btnRun" type="button">Compare</button>
+      <button class="secondary" id="btnReset" type="reset">Reset</button>
+      <a id="downloadLink" class="hidden" download="csv-diff-report.txt">Download full report</a>
+    </div>
+  </form>
+
+  <div id="output" class="out"></div>
+
+  <p class="note muted">Tip: If only the last column should change, leave "Only last column" selected. Use header toggle
+    for clearer column names in messages.</p>
+
+  <script>
+    const qs = (sel) => document.querySelector(sel);
+    const qsa = (sel) => Array.from(document.querySelectorAll(sel));
+
+    function stripBOM(text) { return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text; }
+
+    // Minimal CSV parser with quotes, escaped quotes, CR/LF support
+    function parseCSV(text, delimiter = ',') {
+      text = stripBOM(String(text));
+      const rows = [];
+      let row = [];
+      let cur = '';
+      let inQuotes = false;
+      const len = text.length;
+      for (let i = 0; i < len; i++) {
+        const ch = text[i];
+        if (inQuotes) {
+          if (ch === '"') {
+            if (i + 1 < len && text[i + 1] === '"') { cur += '"'; i++; }
+            else { inQuotes = false; }
+          } else { cur += ch; }
+          continue;
+        }
+        if (ch === '"') inQuotes = true;
+        else if (ch === delimiter) { row.push(cur); cur = ''; }
+        else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+        else if (ch === '\r') { if (!(i + 1 < len && text[i + 1] === '\n')) { row.push(cur); rows.push(row); row = []; cur = ''; } }
+        else cur += ch;
+      }
+      if (inQuotes) throw new Error('Unterminated quoted field at end of file');
+      if (cur !== '' || row.length > 0) { row.push(cur); rows.push(row); }
+      while (rows.length > 0 && rows[rows.length - 1].every(v => String(v).trim() === '')) rows.pop();
+      return rows;
+    }
+
+    function normalize(val, opts) {
+      let v = String(val);
+      if (opts.normalizeNewlines) v = v.replace(/\r\n?|\n/g, '\n');
+      if (opts.trim) v = v.trim();
+      if (opts.collapseWS) v = v.replace(/[\t\f\v ]+/g, ' ').replace(/\s*\n\s*/g, '\n');
+      if (opts.ci) v = v.toLowerCase();
+      return v;
+    }
+
+    function parseLooseNumber(str, opts) {
+      let s = String(str).trim();
+      if (opts.stripCommas) s = s.replace(/,/g, '');
+      if (!s.includes('.') && (s.match(/,/g) || []).length === 1) s = s.replace(',', '.');
+      else s = s.replace(/,(?=\d{3}(\D|$))/g, '');
+      const n = Number(s);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function toAllowedIndexes(allowSpec, width) {
+      if (allowSpec === 'last') return new Set([Math.max(0, width - 1)]);
+      const set = new Set();
+      String(allowSpec).split(',').forEach(part => {
+        const n = Number(part.trim());
+        if (Number.isInteger(n) && n >= 1) set.add(n - 1);
+      });
+      return set;
+    }
+
+    function compareCSVs(before, after, opts) {
+      if (before.length !== after.length) return { ok: false, errors: [`Row count mismatch: before=${before.length}, after=${after.length}`] };
+      const errors = [];
+      const header = opts.hasHeader ? before[0] : null;
+      for (let r = 0; r < before.length; r++) {
+        const A = before[r];
+        const B = after[r];
+        const width = Math.max(A.length, B.length);
+        const allowed = toAllowedIndexes(opts.allow, width);
+        for (let c = 0; c < width; c++) {
+          const a = normalize(c < A.length ? A[c] : '', opts);
+          const b = normalize(c < B.length ? B[c] : '', opts);
+          if (a === b) continue;
+          let equal = false;
+          const numeric = opts.numericCols.has(c) || opts.numericAuto;
+          if (numeric) {
+            const na = parseLooseNumber(a, opts);
+            const nb = parseLooseNumber(b, opts);
+            if (na !== null && nb !== null && Math.abs(na - nb) <= opts.epsilon) equal = true;
+          }
+          if (equal) continue;
+          if (allowed.has(c)) continue;
+          const colName = (opts.hasHeader && header && header[c] != null) ? '"' + header[c] + '"' : '#' + (c + 1);
+          errors.push(`Row ${r + 1}, Col ${colName}: before=${JSON.stringify(a)} after=${JSON.stringify(b)}`);
+        }
+      }
+      return { ok: errors.length === 0, errors };
+    }
+
+    async function readFileAsText(file) {
+      if (!file) throw new Error('Missing file');
+      return new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onerror = () => reject(fr.error || new Error('Failed to read file'));
+        fr.onload = () => resolve(String(fr.result));
+        fr.readAsText(file);
+      });
+    }
+
+    function getOptions() {
+      const allowMode = (qs('input[name="allowMode"]:checked') || {}).value || 'last';
+      const allow = allowMode === 'last' ? 'last' : (qs('#allowIndexes').value || '').trim();
+      const numericColsText = (qs('#numericCols').value || '').trim();
+      const numericCols = new Set(numericColsText ? numericColsText.split(',').map(s => Number(s.trim()) - 1) : []);
+      return {
+        allow,
+        hasHeader: qs('#hasHeader').checked,
+        trim: qs('#trim').checked,
+        ci: qs('#ci').checked,
+        normalizeNewlines: qs('#normalizeNewlines').checked,
+        collapseWS: qs('#collapseWS').checked,
+        numericCols,
+        numericAuto: qs('#numericAuto').checked,
+        epsilon: Number(qs('#epsilon').value || '0') || 0,
+        stripCommas: qs('#stripCommas').checked,
+        delimiter: (qs('#delimiter').value || ',')[0] || ',',
+        maxErrors: Math.max(1, Number(qs('#maxErrors').value || '200') | 0),
+      };
+    }
+
+    let lastBlobUrl = null;
+
+    async function run() {
+      const out = qs('#output');
+      const link = qs('#downloadLink');
+      if (lastBlobUrl) { URL.revokeObjectURL(lastBlobUrl); lastBlobUrl = null; }
+      link.classList.add('hidden');
+      out.textContent = 'Processing...';
+      qs('#btnRun').disabled = true;
+      try {
+        const beforeFile = qs('#fileBefore').files[0];
+        const afterFile = qs('#fileAfter').files[0];
+        const opts = getOptions();
+        const [beforeText, afterText] = await Promise.all([readFileAsText(beforeFile), readFileAsText(afterFile)]);
+        const beforeRows = parseCSV(beforeText, opts.delimiter);
+        const afterRows = parseCSV(afterText, opts.delimiter);
+        const result = compareCSVs(beforeRows, afterRows, opts);
+        if (result.ok) {
+          out.innerHTML = '<span class="ok">PASS</span>: only allowed columns differ.';
+        } else {
+          const count = result.errors.length;
+          const shown = result.errors.slice(0, opts.maxErrors);
+          const extra = count - shown.length;
+          out.innerHTML = `<span class="err">FAIL</span>: Unexpected differences found (${count}).\n\n` + shown.map(e => ' - ' + e).join('\n');
+          if (extra > 0) {
+            const blob = new Blob([result.errors.join('\n')], { type: 'text/plain' });
+            lastBlobUrl = URL.createObjectURL(blob);
+            link.href = lastBlobUrl;
+            link.classList.remove('hidden');
+            link.textContent = `Download full report (+${extra} more)`;
+          }
+        }
+      } catch (e) {
+        out.innerHTML = `<span class="err">ERROR</span>: ${e && e.message ? e.message : e}`;
+      } finally {
+        qs('#btnRun').disabled = false;
+      }
+    }
+
+    qs('#btnRun').addEventListener('click', run);
+    qs('#btnReset').addEventListener('click', () => {
+      const out = qs('#output');
+      out.textContent = '';
+      const link = qs('#downloadLink');
+      if (lastBlobUrl) { URL.revokeObjectURL(lastBlobUrl); lastBlobUrl = null; }
+      link.classList.add('hidden');
+    });
+  </script>
+</body>
+
+</html>
