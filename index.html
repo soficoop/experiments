@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Experiments Collection</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: white;
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .subtitle {
+            text-align: center;
+            color: rgba(255,255,255,0.9);
+            font-size: 1.2rem;
+            margin-bottom: 3rem;
+        }
+
+        .experiments-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .experiment-card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+
+        .experiment-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+        }
+
+        .experiment-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #2d3748;
+        }
+
+        .experiment-description {
+            color: #4a5568;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+        }
+
+        .experiment-tech {
+            display: inline-block;
+            background: #e2e8f0;
+            color: #4a5568;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+        }
+
+        .launch-text {
+            color: #667eea;
+            font-weight: 500;
+            margin-top: 1rem;
+            font-size: 0.95rem;
+        }
+
+        .footer {
+            text-align: center;
+            color: rgba(255,255,255,0.8);
+            margin-top: 4rem;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Experiments Collection</h1>
+        <p class="subtitle">Interactive simulations, games, and tools</p>
+
+        <div class="experiments-grid">
+            <a href="percolation.html" class="experiment-card">
+                <div class="experiment-title">Percolation Simulation</div>
+                <div class="experiment-description">
+                    Interactive visualization of percolation theory with adjustable probability and grid size parameters. 
+                    Explore how connectivity emerges in random systems.
+                </div>
+                <div class="experiment-tech">Simulation • Canvas</div>
+                <div class="launch-text">→ Launch Simulation</div>
+            </a>
+
+            <a href="yield.html" class="experiment-card">
+                <div class="experiment-title">Yield Calculator</div>
+                <div class="experiment-description">
+                    Financial tool for calculating investment yields and returns. Clean interface for 
+                    quick calculations with professional styling.
+                </div>
+                <div class="experiment-tech">Finance • Calculator</div>
+                <div class="launch-text">→ Open Calculator</div>
+            </a>
+
+            <a href="csv-compare.html" class="experiment-card">
+                <div class="experiment-title">CSV Diff Validator</div>
+                <div class="experiment-description">
+                    Compare and validate differences between CSV files. Useful for data analysis 
+                    and verification workflows with detailed diff reporting.
+                </div>
+                <div class="experiment-tech">Data Analysis • Tools</div>
+                <div class="launch-text">→ Start Comparison</div>
+            </a>
+
+            <a href="pong.html" class="experiment-card">
+                <div class="experiment-title">Pong Game</div>
+                <div class="experiment-description">
+                    Classic Pong game implementation with smooth gameplay mechanics. 
+                    Retro gaming experience built with HTML5 Canvas.
+                </div>
+                <div class="experiment-tech">Game • Canvas</div>
+                <div class="launch-text">→ Play Game</div>
+            </a>
+        </div>
+
+        <div class="footer">
+            Choose an experiment to explore • All experiments run directly in your browser
+        </div>
+    </div>
+</body>
+</html>
