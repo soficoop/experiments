@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CSV → MSSQL UPDATE generator</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      margin: 24px;
+      line-height: 1.4;
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      margin: 0 0 12px;
+    }
+
+    .card {
+      border: 1px solid rgba(0, 0, 0, .1);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    label {
+      display: block;
+      margin: 8px 0 4px;
+      font-weight: 600;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(0, 0, 0, .2);
+    }
+
+    input[type="file"] {
+      padding: 6px 0;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .flex-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .grow {
+      flex-grow: 1;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    button {
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(0, 0, 0, .2);
+      cursor: pointer;
+      background: #f5f5f5;
+    }
+
+    button.primary {
+      background: #2563eb;
+      color: white;
+      border-color: #1e40af;
+    }
+
+    textarea {
+      width: calc(100% - 24px);
+      height: 360px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, .2);
+      background: oklab(98.64% -0.01853 -0.00021);
+    }
+
+    .small {
+      color: #666;
+      font-size: 12px;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #3730a3;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .muted {
+      color: #6b7280;
+    }
+
+    /* CSV preview table */
+    .tableWrap {
+      max-height: 720px;
+      overflow: auto;
+      border: 1px solid rgba(0, 0, 0, .15);
+      border-radius: 8px;
+      margin-top: 6px;
+      background: white;
+    }
+
+    table.preview {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 12px;
+    }
+
+    table.preview th,
+    table.preview td {
+      border-bottom: 1px solid rgba(0, 0, 0, .08);
+      padding: 6px 8px;
+      vertical-align: top;
+      /* wrap long values */
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 360px;
+    }
+
+    table.preview thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f8fafc;
+      box-shadow: 0 1px 0 rgba(0, 0, 0, .08);
+      text-align: left;
+    }
+
+    table.preview tbody tr:nth-child(even) td {
+      background: #fafafa;
+    }
+
+    .idCol {
+      background: #fff7ed !important;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="flex-row">
+    <div class="card">
+      <h1>CSV → MSSQL UPDATE generator</h1>
+      <p class="muted">Generates T-SQL UPDATE statements from a CSV. Assumes the first column is the identity key (e.g.,
+        CaseNumber) and all other columns are updated per row.</p>
+
+      <label for="csv">CSV file</label>
+      <input id="csv" type="file" accept=".csv,text/csv" />
+
+      <div class="row">
+        <div>
+          <label for="table">Table name</label>
+          <input id="table" type="text" placeholder="e.g. dbo.Cases" />
+        </div>
+        <div>
+          <label for="idCol">Identity column name (defaults to first CSV header)</label>
+          <input id="idCol" type="text" placeholder="Auto-detected after CSV load" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label><input id="wrapTx" type="checkbox" checked /> Wrap in transaction with TRY/CATCH</label>
+        </div>
+        <div>
+          <label><input id="skipBlanks" type="checkbox" /> Skip setting columns with blank values (instead of SET col =
+            NULL)</label>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="gen" class="primary">Generate SQL</button>
+        <button id="download" disabled>Download .sql</button>
+        <span id="meta" class="small"></span>
+      </div>
+
+      <label for="out">Output</label>
+      <textarea id="out" placeholder="SQL output will appear here…"></textarea>
+
+      <p class="small">Tips:
+        <br />• Empty cells become NULL unless "Skip blanks" is enabled.
+        <br />• Numbers are emitted as-is; true/false → 1/0; everything else is single-quoted with embedded quotes
+        doubled.
+        <br />• Identifiers are emitted in [square brackets].
+      </p>
+    </div>
+    <div class="card grow">
+      <div class="row" style="align-items: end; margin-top: 8px;">
+        <div>
+          <label for="previewRows">CSV preview (rows to show)</label>
+          <input id="previewRows" type="text" placeholder="e.g. 50" value="50" />
+        </div>
+        <div>
+          <span id="previewInfo" class="small"></span>
+        </div>
+      </div>
+
+      <div class="tableWrap" id="previewWrap" aria-label="CSV preview" role="region">
+        <table class="preview" id="preview"></table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (sel) => document.querySelector(sel);
+
+    const readFileText = (file) => new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onerror = () => reject(fr.error);
+      fr.onload = () => resolve(fr.result);
+      fr.readAsText(file);
+    });
+
+    // Minimal CSV parser supporting RFC4180 quoting: commas, newlines in quotes, and doubled quotes.
+    function parseCSV(text) {
+      if (!text) return { headers: [], rows: [] };
+      // Remove BOM
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      const rows = [];
+      let row = [];
+      let field = '';
+      let inQuotes = false;
+      let i = 0;
+      while (i < text.length) {
+        const ch = text[i];
+        if (inQuotes) {
+          if (ch === '"') {
+            // Check for escaped quote
+            if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+            inQuotes = false; i++; continue;
+          } else {
+            field += ch; i++; continue;
+          }
+        } else {
+          if (ch === '"') { inQuotes = true; i++; continue; }
+          if (ch === ',') { row.push(field); field = ''; i++; continue; }
+          if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
+          if (ch === '\r') { // handle CRLF or lone CR
+            // if next is \n, consume both, else consume CR
+            row.push(field); rows.push(row); row = []; field = '';
+            if (text[i + 1] === '\n') i += 2; else i += 1; continue;
+          }
+          field += ch; i++;
+        }
+      }
+      // Last field/row
+      row.push(field);
+      rows.push(row);
+      // Drop trailing empty rows
+      while (rows.length && rows[rows.length - 1].every(c => c === '')) rows.pop();
+      const headers = (rows.shift() || []).map(h => h.trim());
+      return { headers, rows };
+    }
+
+    function isNumericLike(val) {
+      if (val == null) return false;
+      const s = String(val).trim();
+      if (s === '') return false;
+      // Allow integers and decimals, optional leading minus
+      return /^-?\d+(\.\d+)?$/.test(s);
+    }
+
+    function isBooleanLike(val) {
+      if (val == null) return false;
+      const s = String(val).trim().toLowerCase();
+      return s === 'true' || s === 'false' || s === 'yes' || s === 'no';
+    }
+
+    function coerceBoolean(val) {
+      const s = String(val).trim().toLowerCase();
+      return (s === 'true' || s === 'yes') ? 1 : 0;
+    }
+
+    function sqlQuoteIdentifier(ident) {
+      // Use [bracketed] identifiers and escape any closing bracket by doubling
+      return '[' + String(ident).replaceAll(']', ']]') + ']';
+    }
+
+    function sqlFormatValue(raw, { skipBlankToNull = false } = {}) {
+      if (raw == null) return 'NULL';
+      let v = String(raw);
+      // Treat literal NULL (case-insensitive) as NULL
+      if (v.trim().toUpperCase() === 'NULL') return 'NULL';
+      // Blank -> NULL (unless skipping)
+      if (v.trim() === '') return skipBlankToNull ? undefined : 'NULL';
+      // numeric
+      if (isNumericLike(v)) return v.trim();
+      // boolean-ish -> 1/0
+      if (isBooleanLike(v)) return String(coerceBoolean(v));
+      // Otherwise, single-quote with doubled single-quotes
+      const escaped = v.replaceAll("'", "''");
+      return `'$${'\u0000'}'`.replace("$\u0000", escaped); // trick to avoid accidental template confusion
+    }
+
+    function generateSql({ headers, rows, tableName, idColumnName, skipBlanks, wrapTx }) {
+      if (!headers.length) throw new Error('CSV has no header row.');
+      if (!rows.length) throw new Error('CSV has no data rows.');
+      if (!tableName) throw new Error('Table name is required.');
+      const idCol = idColumnName || headers[0];
+      if (!idCol) throw new Error('Identity column name could not be determined.');
+      const idIdx = headers.findIndex(h => h === idCol);
+      if (idIdx === -1) throw new Error(`Identity column "${idCol}" not found in CSV headers.`);
+
+      const colsToUpdate = headers.filter((h, idx) => idx !== idIdx);
+      if (!colsToUpdate.length) throw new Error('No columns to update (CSV only has identity column).');
+
+      const lines = [];
+      lines.push('-- Generated by CSV → MSSQL UPDATE generator');
+      lines.push(`-- Table: ${tableName}`);
+      lines.push(`-- Identity column: ${idCol}`);
+      lines.push('SET NOCOUNT ON;');
+      if (wrapTx) {
+        lines.push('');
+        lines.push('BEGIN TRY');
+        lines.push('    BEGIN TRAN;');
+      }
+
+      for (let r = 0; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row || row.length === 0) continue;
+        const idValRaw = row[idIdx];
+        if (idValRaw == null || String(idValRaw).trim() === '') continue; // skip rows without identity value
+        const idValSql = sqlFormatValue(idValRaw, { skipBlankToNull: false });
+        const setClauses = [];
+        for (const col of colsToUpdate) {
+          const idx = headers.indexOf(col);
+          const raw = row[idx];
+          const formatted = sqlFormatValue(raw, { skipBlankToNull: skipBlanks });
+          if (formatted === undefined) continue; // skip blank when option enabled
+          setClauses.push(`${sqlQuoteIdentifier(col)} = ${formatted}`);
+        }
+        if (!setClauses.length) continue;
+        const tableIdent = tableName
+          .split('.')
+          .map(part => part ? sqlQuoteIdentifier(part) : part)
+          .join('.');
+        lines.push(`UPDATE ${tableIdent} SET ${setClauses.join(', ')} WHERE ${sqlQuoteIdentifier(idCol)} = ${idValSql};`);
+      }
+
+      if (wrapTx) {
+        lines.push('    COMMIT TRAN;');
+        lines.push('END TRY');
+        lines.push('BEGIN CATCH');
+        lines.push('    IF @@TRANCOUNT > 0 ROLLBACK TRAN;');
+        lines.push('    THROW;');
+        lines.push('END CATCH');
+      }
+
+      return lines.join('\n');
+    }
+
+    let parsed = null;
+    let lastIdColName = null;
+
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function renderPreview() {
+      if (!parsed || !parsed.headers.length) {
+        $('#preview').innerHTML = '';
+        $('#previewInfo').textContent = '';
+        return;
+      }
+      const { headers, rows } = parsed;
+      const idColName = $('#idCol').value.trim() || headers[0];
+      const idIdx = headers.findIndex(h => h === idColName);
+      const limitRaw = ($('#previewRows').value || '').trim();
+      const limit = Math.max(0, Number.parseInt(limitRaw || '50', 10) || 50);
+      const shown = Math.min(limit, rows.length);
+      $('#previewInfo').textContent = `${headers.length} columns, showing ${shown} of ${rows.length} rows.`;
+
+      let html = '<thead><tr>';
+      for (let c = 0; c < headers.length; c++) {
+        const cls = (c === idIdx) ? ' class="idCol"' : '';
+        html += `<th${cls}>${escapeHtml(headers[c])}</th>`;
+      }
+      html += '</tr></thead><tbody>';
+      for (let r = 0; r < shown; r++) {
+        const row = rows[r] || [];
+        html += '<tr>';
+        for (let c = 0; c < headers.length; c++) {
+          const val = row[c] == null ? '' : row[c];
+          const cls = (c === idIdx) ? ' class="idCol"' : '';
+          html += `<td${cls}>${escapeHtml(val)}</td>`;
+        }
+        html += '</tr>';
+      }
+      html += '</tbody>';
+      $('#preview').innerHTML = html;
+    }
+
+    $('#csv').addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const txt = await readFileText(file);
+      parsed = parseCSV(txt);
+      const { headers, rows } = parsed;
+      $('#meta').textContent = headers.length
+        ? `${headers.length} columns, ${rows.length} rows.`
+        : 'Failed to parse CSV.';
+      if (headers.length) {
+        // Default id column name to the first header if not already set
+        const idInput = $('#idCol');
+        if (!idInput.value) idInput.value = headers[0];
+        lastIdColName = idInput.value;
+        renderPreview();
+      }
+    });
+
+    $('#idCol').addEventListener('input', () => {
+      if (!parsed) return;
+      renderPreview();
+    });
+
+    $('#previewRows').addEventListener('input', () => {
+      if (!parsed) return;
+      renderPreview();
+    });
+
+    $('#gen').addEventListener('click', () => {
+      try {
+        if (!parsed) throw new Error('Please choose a CSV file first.');
+        const tableName = $('#table').value.trim();
+        const idColName = $('#idCol').value.trim();
+        const wrapTx = $('#wrapTx').checked;
+        const skipBlanks = $('#skipBlanks').checked;
+        const sql = generateSql({
+          headers: parsed.headers,
+          rows: parsed.rows,
+          tableName,
+          idColumnName: idColName,
+          skipBlanks,
+          wrapTx,
+        });
+        $('#out').value = sql;
+        $('#download').disabled = !sql;
+      } catch (err) {
+        $('#out').value = `-- Error: ${err?.message || err}`;
+        $('#download').disabled = true;
+      }
+    });
+
+    $('#download').addEventListener('click', () => {
+      const content = $('#out').value || '';
+      if (!content) return;
+      const blob = new Blob([content], { type: 'text/sql;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      a.href = url;
+      a.download = `updates-${ts}.sql`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  </script>
+</body>
+
+</html>
