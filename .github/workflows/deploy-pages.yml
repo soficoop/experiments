@@ -1,0 +1,224 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'hotfix/**'
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # Build and deploy job
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          
+      - name: Checkout all branches for multi-branch deployment
+        run: |
+          # Fetch all branches
+          git fetch --all
+          
+          # Create deployment directory
+          mkdir -p _site
+          
+      - name: Determine deployment path
+        id: deployment-path
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "path=." >> $GITHUB_OUTPUT
+            echo "is-main=true" >> $GITHUB_OUTPUT
+          else
+            # Sanitize branch name for URL
+            BRANCH_PATH=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
+            echo "path=branches/$BRANCH_PATH" >> $GITHUB_OUTPUT
+            echo "is-main=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Build main branch content
+        run: |
+          # Always deploy main branch to root
+          git checkout main
+          cp *.html _site/
+          
+      - name: Build branch deployments
+        run: |
+          # Create branches directory
+          mkdir -p _site/branches
+          
+          # Deploy current branch if it's not main
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            git checkout ${{ github.ref_name }}
+            BRANCH_PATH=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
+            mkdir -p "_site/branches/$BRANCH_PATH"
+            cp *.html "_site/branches/$BRANCH_PATH/"
+          fi
+          
+          # Also deploy other common branches if they exist
+          for branch in develop staging; do
+            if git show-ref --verify --quiet refs/remotes/origin/$branch; then
+              if [ "$branch" != "${{ github.ref_name }}" ]; then
+                git checkout $branch
+                BRANCH_PATH=$(echo "$branch" | sed 's/[^a-zA-Z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
+                mkdir -p "_site/branches/$BRANCH_PATH"
+                cp *.html "_site/branches/$BRANCH_PATH/" 2>/dev/null || true
+              fi
+            fi
+          done
+          
+      - name: Create branch index page
+        run: |
+          cat > _site/branches/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Branch Deployments - Experiments</title>
+              <style>
+                  body {
+                      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+                      margin: 0;
+                      padding: 2rem;
+                      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                      min-height: 100vh;
+                      color: #333;
+                  }
+                  .container {
+                      max-width: 800px;
+                      margin: 0 auto;
+                      background: white;
+                      border-radius: 12px;
+                      padding: 2rem;
+                      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+                  }
+                  h1 {
+                      color: #2d3748;
+                      text-align: center;
+                      margin-bottom: 2rem;
+                  }
+                  .deployment-info {
+                      background: #e6f3ff;
+                      border-left: 4px solid #667eea;
+                      padding: 1rem;
+                      margin-bottom: 2rem;
+                      border-radius: 4px;
+                  }
+                  .branch-list {
+                      list-style: none;
+                      padding: 0;
+                  }
+                  .branch-item {
+                      margin: 1rem 0;
+                      padding: 1rem;
+                      background: #f7fafc;
+                      border-radius: 8px;
+                      border-left: 4px solid #667eea;
+                  }
+                  .branch-link {
+                      color: #667eea;
+                      text-decoration: none;
+                      font-weight: 500;
+                      display: block;
+                  }
+                  .branch-link:hover {
+                      text-decoration: underline;
+                  }
+                  .branch-name {
+                      font-size: 1.1em;
+                      margin-bottom: 0.5rem;
+                  }
+                  .branch-desc {
+                      font-size: 0.9em;
+                      color: #666;
+                  }
+                  .main-link {
+                      text-align: center;
+                      margin-top: 2rem;
+                      padding: 1rem;
+                      background: #667eea;
+                      border-radius: 8px;
+                  }
+                  .main-link a {
+                      color: white;
+                      text-decoration: none;
+                      font-weight: 600;
+                  }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>🌿 Branch Deployments</h1>
+                  <div class="deployment-info">
+                      <strong>ℹ️ About Branch Deployments</strong><br>
+                      Each branch is automatically deployed to its own URL when pushed. This allows for testing features and changes before merging to main.
+                  </div>
+                  <p>Available branch deployments:</p>
+                  <ul class="branch-list" id="branchList">
+          EOF
+          
+          # List available branch directories dynamically
+          for branch_dir in _site/branches/*/; do
+            if [ -d "$branch_dir" ] && [ "$branch_dir" != "_site/branches/*/" ]; then
+              branch_name=$(basename "$branch_dir")
+              if [ "$branch_name" != "index.html" ]; then
+                cat >> _site/branches/index.html << EOF
+                      <li class="branch-item">
+                          <a href="./$branch_name/" class="branch-link">
+                              <div class="branch-name">📋 $branch_name</div>
+                              <div class="branch-desc">Branch deployment - Click to view experiments</div>
+                          </a>
+                      </li>
+          EOF
+              fi
+            fi
+          done
+          
+          cat >> _site/branches/index.html << 'EOF'
+                  </ul>
+                  <div class="main-link">
+                      <a href="/">← Back to Main Site</a>
+                  </div>
+              </div>
+          </body>
+          </html>
+          EOF
+          
+      - name: Add branch navigation to main index
+        run: |
+          # Check if there are any branch deployments
+          if [ -d "_site/branches" ] && [ "$(find _site/branches -mindepth 1 -maxdepth 1 -type d | wc -l)" -gt 0 ]; then
+            # Add a link to branch deployments in the main index.html
+            sed -i 's|<div class="footer">|<div style="text-align: center; margin-top: 3rem;"><a href="/branches/" style="color: rgba(255,255,255,0.9); text-decoration: none; font-size: 0.95rem; padding: 0.5rem 1rem; background: rgba(255,255,255,0.1); border-radius: 20px; border: 1px solid rgba(255,255,255,0.2);">🌿 View Branch Deployments</a></div>\n        <div class="footer">|' _site/index.html
+          fi
+          
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+          
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '_site'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

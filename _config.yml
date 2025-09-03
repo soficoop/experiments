@@ -1,0 +1,28 @@
+# GitHub Pages and Jekyll configuration
+# This file ensures proper handling of the deployment
+
+# Exclude files from Jekyll processing
+exclude:
+  - README.md
+  - .github/
+
+# Include dot files
+include:
+  - .htaccess
+
+# Use minimal Jekyll theme for better compatibility
+theme: minima
+
+# Site configuration
+title: "Experiments Collection"
+description: "Interactive simulations, games, and tools"
+url: "https://soficoop.github.io"
+baseurl: "/experiments"
+
+# Markdown settings
+markdown: kramdown
+highlighter: rouge
+
+# Plugins
+plugins:
+  - jekyll-default-layout
