@@ -155,6 +155,44 @@
     .idCol {
       background: #fff7ed !important;
     }
+
+    /* Validation error styles */
+    .validation-error {
+      background: #fee2e2 !important;
+      position: relative;
+    }
+
+    .validation-error::after {
+      content: "⚠";
+      position: absolute;
+      top: 2px;
+      right: 4px;
+      color: #dc2626;
+      font-weight: bold;
+      font-size: 10px;
+    }
+
+    .validation-summary {
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid #fbbf24;
+      border-radius: 6px;
+      background: #fefce8;
+      display: none;
+    }
+
+    .validation-summary h4 {
+      margin: 0 0 8px 0;
+      color: #92400e;
+      font-size: 14px;
+    }
+
+    .validation-summary ul {
+      margin: 0;
+      padding-left: 20px;
+      color: #92400e;
+      font-size: 12px;
+    }
   </style>
 </head>
 
@@ -218,6 +256,11 @@
 
       <div class="tableWrap" id="previewWrap" aria-label="CSV preview" role="region">
         <table class="preview" id="preview"></table>
+      </div>
+
+      <div class="validation-summary" id="validationSummary">
+        <h4>Data Validation Issues</h4>
+        <ul id="validationErrors"></ul>
       </div>
     </div>
   </div>
@@ -313,6 +356,94 @@
       return `'$${'\u0000'}'`.replace("$\u0000", escaped); // trick to avoid accidental template confusion
     }
 
+    // Column type inference and validation
+    function inferColumnTypes(headers, rows) {
+      const columnTypes = {};
+      const sampleSize = Math.min(20, rows.length); // Sample first 20 rows for type inference
+      
+      headers.forEach((header, colIdx) => {
+        const samples = rows.slice(0, sampleSize)
+          .map(row => row[colIdx])
+          .filter(val => val != null && String(val).trim() !== ''); // Ignore empty values
+        
+        if (samples.length === 0) {
+          columnTypes[header] = 'unknown';
+          return;
+        }
+        
+        // Check if all samples are numeric
+        const numericCount = samples.filter(val => isNumericLike(val)).length;
+        const booleanCount = samples.filter(val => isBooleanLike(val)).length;
+        
+        // If more than 50% are numeric, consider it a numeric column
+        if (numericCount >= Math.max(1, samples.length * 0.5)) {
+          columnTypes[header] = 'numeric';
+        } else if (booleanCount >= Math.max(1, samples.length * 0.5)) {
+          columnTypes[header] = 'boolean';
+        } else {
+          columnTypes[header] = 'text';
+        }
+      });
+      
+      return columnTypes;
+    }
+
+    function validateCellValue(value, expectedType, header, rowIdx, colIdx) {
+      if (value == null || String(value).trim() === '') {
+        return null; // Empty values are generally OK
+      }
+      
+      const strValue = String(value).trim();
+      
+      switch (expectedType) {
+        case 'numeric':
+          if (!isNumericLike(strValue)) {
+            return {
+              row: rowIdx + 1, // 1-based for user display
+              column: header,
+              columnIndex: colIdx,
+              value: strValue,
+              expected: 'numeric',
+              actual: 'text'
+            };
+          }
+          break;
+        case 'boolean':
+          if (!isBooleanLike(strValue) && !isNumericLike(strValue)) {
+            return {
+              row: rowIdx + 1,
+              column: header,
+              columnIndex: colIdx,
+              value: strValue,
+              expected: 'boolean',
+              actual: 'text'
+            };
+          }
+          break;
+        // For 'text' type, anything is acceptable
+      }
+      
+      return null;
+    }
+
+    function validateData(headers, rows) {
+      const columnTypes = inferColumnTypes(headers, rows);
+      const validationErrors = [];
+      
+      rows.forEach((row, rowIdx) => {
+        headers.forEach((header, colIdx) => {
+          const value = row[colIdx];
+          const expectedType = columnTypes[header];
+          const error = validateCellValue(value, expectedType, header, rowIdx, colIdx);
+          if (error) {
+            validationErrors.push(error);
+          }
+        });
+      });
+      
+      return { columnTypes, validationErrors };
+    }
+
     function generateSql({ headers, rows, tableName, idColumnName, skipBlanks, wrapTx }) {
       if (!headers.length) throw new Error('CSV has no header row.');
       if (!rows.length) throw new Error('CSV has no data rows.');
@@ -372,6 +503,7 @@
 
     let parsed = null;
     let lastIdColName = null;
+    let lastValidation = null;
 
     function escapeHtml(s) {
       return String(s)
@@ -386,6 +518,7 @@
       if (!parsed || !parsed.headers.length) {
         $('#preview').innerHTML = '';
         $('#previewInfo').textContent = '';
+        $('#validationSummary').style.display = 'none';
         return;
       }
       const { headers, rows } = parsed;
@@ -394,12 +527,39 @@
       const limitRaw = ($('#previewRows').value || '').trim();
       const limit = Math.max(0, Number.parseInt(limitRaw || '50', 10) || 50);
       const shown = Math.min(limit, rows.length);
+      
+      // Perform validation
+      lastValidation = validateData(headers, rows);
+      const { columnTypes, validationErrors } = lastValidation;
+      
+      // Create error lookup for quick access during rendering
+      const errorLookup = new Set();
+      validationErrors.forEach(error => {
+        errorLookup.add(`${error.row - 1}-${error.columnIndex}`); // Convert back to 0-based for lookup
+      });
+      
       $('#previewInfo').textContent = `${headers.length} columns, showing ${shown} of ${rows.length} rows.`;
+      
+      // Update validation summary
+      if (validationErrors.length > 0) {
+        const errorsList = $('#validationErrors');
+        errorsList.innerHTML = validationErrors
+          .slice(0, 10) // Show only first 10 errors
+          .map(error => `<li>Row ${error.row}, Column "${error.column}": Expected ${error.expected}, found "${error.value}" (${error.actual})</li>`)
+          .join('');
+        if (validationErrors.length > 10) {
+          errorsList.innerHTML += `<li>... and ${validationErrors.length - 10} more errors</li>`;
+        }
+        $('#validationSummary').style.display = 'block';
+      } else {
+        $('#validationSummary').style.display = 'none';
+      }
 
       let html = '<thead><tr>';
       for (let c = 0; c < headers.length; c++) {
         const cls = (c === idIdx) ? ' class="idCol"' : '';
-        html += `<th${cls}>${escapeHtml(headers[c])}</th>`;
+        const typeInfo = columnTypes[headers[c]] ? ` (${columnTypes[headers[c]]})` : '';
+        html += `<th${cls}>${escapeHtml(headers[c])}${typeInfo}</th>`;
       }
       html += '</tr></thead><tbody>';
       for (let r = 0; r < shown; r++) {
@@ -407,8 +567,15 @@
         html += '<tr>';
         for (let c = 0; c < headers.length; c++) {
           const val = row[c] == null ? '' : row[c];
-          const cls = (c === idIdx) ? ' class="idCol"' : '';
-          html += `<td${cls}>${escapeHtml(val)}</td>`;
+          let cls = (c === idIdx) ? 'idCol' : '';
+          
+          // Add validation error class if this cell has an error
+          if (errorLookup.has(`${r}-${c}`)) {
+            cls = cls ? `${cls} validation-error` : 'validation-error';
+          }
+          
+          const classAttr = cls ? ` class="${cls}"` : '';
+          html += `<td${classAttr}>${escapeHtml(val)}</td>`;
         }
         html += '</tr>';
       }
