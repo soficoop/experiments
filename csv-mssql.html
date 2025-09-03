@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CSV → MSSQL UPDATE generator</title>
+  <title>CSV → SQL UPDATE generator</title>
   <style>
     :root {
       color-scheme: light dark;
@@ -33,7 +33,7 @@
       font-weight: 600;
     }
 
-    input[type="text"] {
+    input[type="text"], select {
       width: 100%;
       padding: 8px;
       border-radius: 6px;
@@ -199,8 +199,8 @@
 <body>
   <div class="flex-row">
     <div class="card">
-      <h1>CSV → MSSQL UPDATE generator</h1>
-      <p class="muted">Generates T-SQL UPDATE statements from a CSV. Assumes the first column is the identity key (e.g.,
+      <h1>CSV → SQL UPDATE generator</h1>
+      <p class="muted">Generates UPDATE statements from a CSV for MSSQL, PostgreSQL, or MySQL. Assumes the first column is the identity key (e.g.,
         CaseNumber) and all other columns are updated per row.</p>
 
       <label for="csv">CSV file</label>
@@ -208,18 +208,30 @@
 
       <div class="row">
         <div>
-          <label for="table">Table name</label>
-          <input id="table" type="text" placeholder="e.g. dbo.Cases" />
+          <label for="database">Database type</label>
+          <select id="database">
+            <option value="mssql">Microsoft SQL Server (MSSQL)</option>
+            <option value="postgresql">PostgreSQL</option>
+            <option value="mysql">MySQL</option>
+          </select>
         </div>
         <div>
-          <label for="idCol">Identity column name (defaults to first CSV header)</label>
-          <input id="idCol" type="text" placeholder="Auto-detected after CSV load" />
+          <label for="table">Table name</label>
+          <input id="table" type="text" placeholder="e.g. schema.table or table" />
         </div>
       </div>
 
       <div class="row">
         <div>
-          <label><input id="wrapTx" type="checkbox" checked /> Wrap in transaction with TRY/CATCH</label>
+          <label for="idCol">Identity column name (defaults to first CSV header)</label>
+          <input id="idCol" type="text" placeholder="Auto-detected after CSV load" />
+        </div>
+        <div></div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label><input id="wrapTx" type="checkbox" checked /> Wrap in transaction</label>
         </div>
         <div>
           <label><input id="skipBlanks" type="checkbox" /> Skip setting columns with blank values (instead of SET col =
@@ -240,7 +252,7 @@
         <br />• Empty cells become NULL unless "Skip blanks" is enabled.
         <br />• Numbers are emitted as-is; true/false → 1/0; everything else is single-quoted with embedded quotes
         doubled.
-        <br />• Identifiers are emitted in [square brackets].
+        <br />• Identifiers are quoted according to the selected database type (MSSQL: [brackets], PostgreSQL: "quotes", MySQL: `backticks`).
       </p>
     </div>
     <div class="card grow">
@@ -335,9 +347,21 @@
       return (s === 'true' || s === 'yes') ? 1 : 0;
     }
 
-    function sqlQuoteIdentifier(ident) {
-      // Use [bracketed] identifiers and escape any closing bracket by doubling
-      return '[' + String(ident).replaceAll(']', ']]') + ']';
+    function sqlQuoteIdentifier(ident, dbType = 'mssql') {
+      const identifier = String(ident);
+      switch (dbType) {
+        case 'mssql':
+          // Use [bracketed] identifiers and escape any closing bracket by doubling
+          return '[' + identifier.replaceAll(']', ']]') + ']';
+        case 'postgresql':
+          // Use "double quoted" identifiers and escape any double quote by doubling
+          return '"' + identifier.replaceAll('"', '""') + '"';
+        case 'mysql':
+          // Use `backtick quoted` identifiers and escape any backtick by doubling
+          return '`' + identifier.replaceAll('`', '``') + '`';
+        default:
+          throw new Error(`Unknown database type: ${dbType}`);
+      }
     }
 
     function sqlFormatValue(raw, { skipBlankToNull = false } = {}) {
@@ -444,10 +468,40 @@
       return { columnTypes, validationErrors };
     }
 
-    function generateSql({ headers, rows, tableName, idColumnName, skipBlanks, wrapTx }) {
+    // Database-specific configuration
+    const dbConfig = {
+      mssql: {
+        name: 'Microsoft SQL Server',
+        supportsNoCount: true,
+        transactionBegin: 'BEGIN TRY\n    BEGIN TRAN;',
+        transactionCommit: '    COMMIT TRAN;\nEND TRY\nBEGIN CATCH\n    IF @@TRANCOUNT > 0 ROLLBACK TRAN;\n    THROW;\nEND CATCH',
+        fileExtension: 'sql'
+      },
+      postgresql: {
+        name: 'PostgreSQL',
+        supportsNoCount: false,
+        transactionBegin: 'BEGIN;',
+        transactionCommit: 'COMMIT;',
+        transactionRollback: 'ROLLBACK;',
+        fileExtension: 'sql'
+      },
+      mysql: {
+        name: 'MySQL',
+        supportsNoCount: false,
+        transactionBegin: 'START TRANSACTION;',
+        transactionCommit: 'COMMIT;',
+        transactionRollback: 'ROLLBACK;',
+        fileExtension: 'sql'
+      }
+    };
+
+    function generateSql({ headers, rows, tableName, idColumnName, skipBlanks, wrapTx, dbType = 'mssql' }) {
       if (!headers.length) throw new Error('CSV has no header row.');
       if (!rows.length) throw new Error('CSV has no data rows.');
       if (!tableName) throw new Error('Table name is required.');
+      if (!dbConfig[dbType]) throw new Error(`Unsupported database type: ${dbType}`);
+      
+      const config = dbConfig[dbType];
       const idCol = idColumnName || headers[0];
       if (!idCol) throw new Error('Identity column name could not be determined.');
       const idIdx = headers.findIndex(h => h === idCol);
@@ -457,14 +511,15 @@
       if (!colsToUpdate.length) throw new Error('No columns to update (CSV only has identity column).');
 
       const lines = [];
-      lines.push('-- Generated by CSV → MSSQL UPDATE generator');
+      lines.push(`-- Generated by CSV → ${config.name} UPDATE generator`);
       lines.push(`-- Table: ${tableName}`);
       lines.push(`-- Identity column: ${idCol}`);
-      lines.push('SET NOCOUNT ON;');
+      if (config.supportsNoCount) {
+        lines.push('SET NOCOUNT ON;');
+      }
       if (wrapTx) {
         lines.push('');
-        lines.push('BEGIN TRY');
-        lines.push('    BEGIN TRAN;');
+        lines.push(config.transactionBegin);
       }
 
       for (let r = 0; r < rows.length; r++) {
@@ -479,23 +534,18 @@
           const raw = row[idx];
           const formatted = sqlFormatValue(raw, { skipBlankToNull: skipBlanks });
           if (formatted === undefined) continue; // skip blank when option enabled
-          setClauses.push(`${sqlQuoteIdentifier(col)} = ${formatted}`);
+          setClauses.push(`${sqlQuoteIdentifier(col, dbType)} = ${formatted}`);
         }
         if (!setClauses.length) continue;
         const tableIdent = tableName
           .split('.')
-          .map(part => part ? sqlQuoteIdentifier(part) : part)
+          .map(part => part ? sqlQuoteIdentifier(part, dbType) : part)
           .join('.');
-        lines.push(`UPDATE ${tableIdent} SET ${setClauses.join(', ')} WHERE ${sqlQuoteIdentifier(idCol)} = ${idValSql};`);
+        lines.push(`UPDATE ${tableIdent} SET ${setClauses.join(', ')} WHERE ${sqlQuoteIdentifier(idCol, dbType)} = ${idValSql};`);
       }
 
       if (wrapTx) {
-        lines.push('    COMMIT TRAN;');
-        lines.push('END TRY');
-        lines.push('BEGIN CATCH');
-        lines.push('    IF @@TRANCOUNT > 0 ROLLBACK TRAN;');
-        lines.push('    THROW;');
-        lines.push('END CATCH');
+        lines.push(config.transactionCommit);
       }
 
       return lines.join('\n');
@@ -616,6 +666,7 @@
         if (!parsed) throw new Error('Please choose a CSV file first.');
         const tableName = $('#table').value.trim();
         const idColName = $('#idCol').value.trim();
+        const dbType = $('#database').value;
         const wrapTx = $('#wrapTx').checked;
         const skipBlanks = $('#skipBlanks').checked;
         const sql = generateSql({
@@ -625,6 +676,7 @@
           idColumnName: idColName,
           skipBlanks,
           wrapTx,
+          dbType,
         });
         $('#out').value = sql;
         $('#download').disabled = !sql;
@@ -637,12 +689,13 @@
     $('#download').addEventListener('click', () => {
       const content = $('#out').value || '';
       if (!content) return;
+      const dbType = $('#database').value;
       const blob = new Blob([content], { type: 'text/sql;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       const ts = new Date().toISOString().replace(/[:.]/g, '-');
       a.href = url;
-      a.download = `updates-${ts}.sql`;
+      a.download = `updates-${dbType}-${ts}.sql`;
       a.click();
       URL.revokeObjectURL(url);
     });
