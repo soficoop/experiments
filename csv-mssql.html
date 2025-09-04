@@ -22,7 +22,7 @@
     }
 
     .card {
-      border: 1px solid rgba(0, 0, 0, .1);
+      border: 1px solid light-dark(rgba(0, 0, 0, .1), rgba(255, 255, 255, .1));
       border-radius: 8px;
       padding: 16px;
     }
@@ -37,7 +37,7 @@
       width: 100%;
       padding: 8px;
       border-radius: 6px;
-      border: 1px solid rgba(0, 0, 0, .2);
+      border: 1px solid light-dark(rgba(0, 0, 0, .2), rgba(255, 255, 255, .2));
     }
 
     input[type="file"] {
@@ -70,9 +70,9 @@
     button {
       padding: 8px 12px;
       border-radius: 6px;
-      border: 1px solid rgba(0, 0, 0, .2);
+      border: 1px solid light-dark(rgba(0, 0, 0, .2), rgba(255, 255, 255, .2));
       cursor: pointer;
-      background: #f5f5f5;
+      background: light-dark(#f5f5f5, #3a3a3a);
     }
 
     button.primary {
@@ -88,12 +88,12 @@
       font-size: 12px;
       padding: 10px;
       border-radius: 8px;
-      border: 1px solid rgba(0, 0, 0, .2);
-      background: oklab(98.64% -0.01853 -0.00021);
+      border: 1px solid light-dark(rgba(0, 0, 0, .2), rgba(255, 255, 255, .2));
+      background: light-dark(oklab(98.64% -0.01853 -0.00021), oklab(20% 0 0));
     }
 
     .small {
-      color: #666;
+      color: light-dark(#666, #999);
       font-size: 12px;
     }
 
@@ -101,24 +101,24 @@
       display: inline-block;
       padding: 2px 8px;
       border-radius: 999px;
-      background: #eef2ff;
-      color: #3730a3;
+      background: light-dark(#eef2ff, #1e293b);
+      color: light-dark(#3730a3, #94a3b8);
       font-size: 12px;
       font-weight: 600;
     }
 
     .muted {
-      color: #6b7280;
+      color: light-dark(#6b7280, #9ca3af);
     }
 
     /* CSV preview table */
     .tableWrap {
       max-height: 720px;
       overflow: auto;
-      border: 1px solid rgba(0, 0, 0, .15);
+      border: 1px solid light-dark(rgba(0, 0, 0, .15), rgba(255, 255, 255, .15));
       border-radius: 8px;
       margin-top: 6px;
-      background: white;
+      background: light-dark(white, #1a1a1a);
     }
 
     table.preview {
@@ -129,7 +129,7 @@
 
     table.preview th,
     table.preview td {
-      border-bottom: 1px solid rgba(0, 0, 0, .08);
+      border-bottom: 1px solid light-dark(rgba(0, 0, 0, .08), rgba(255, 255, 255, .08));
       padding: 6px 8px;
       vertical-align: top;
       /* wrap long values */
@@ -143,22 +143,22 @@
       position: sticky;
       top: 0;
       z-index: 1;
-      background: #f8fafc;
-      box-shadow: 0 1px 0 rgba(0, 0, 0, .08);
+      background: light-dark(#f8fafc, #2a2a2a);
+      box-shadow: 0 1px 0 light-dark(rgba(0, 0, 0, .08), rgba(255, 255, 255, .08));
       text-align: left;
     }
 
     table.preview tbody tr:nth-child(even) td {
-      background: #fafafa;
+      background: light-dark(#fafafa, #232323);
     }
 
     .idCol {
-      background: #fff7ed !important;
+      background: light-dark(#fff7ed, #2d1b0f) !important;
     }
 
     /* Validation error styles */
     .validation-error {
-      background: #fee2e2 !important;
+      background: light-dark(#fee2e2, #3c1414) !important;
       position: relative;
     }
 
@@ -167,7 +167,7 @@
       position: absolute;
       top: 2px;
       right: 4px;
-      color: #dc2626;
+      color: light-dark(#dc2626, #f87171);
       font-weight: bold;
       font-size: 10px;
     }
@@ -175,22 +175,22 @@
     .validation-summary {
       margin-top: 12px;
       padding: 12px;
-      border: 1px solid #fbbf24;
+      border: 1px solid light-dark(#fbbf24, #7c2d12);
       border-radius: 6px;
-      background: #fefce8;
+      background: light-dark(#fefce8, #1c1408);
       display: none;
     }
 
     .validation-summary h4 {
       margin: 0 0 8px 0;
-      color: #92400e;
+      color: light-dark(#92400e, #d97706);
       font-size: 14px;
     }
 
     .validation-summary ul {
       margin: 0;
       padding-left: 20px;
-      color: #92400e;
+      color: light-dark(#92400e, #d97706);
       font-size: 12px;
     }
   </style>
