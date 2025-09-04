@@ -4,9 +4,8 @@ on:
   push:
     branches:
       - main
-      - develop
-      - 'feature/**'
-      - 'hotfix/**'
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
@@ -21,79 +20,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Build and deploy job
-  deploy:
+  # Clean up closed PR deployments
+  cleanup:
+    if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout current branch
+      - name: Checkout gh-pages branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: gh-pages
+          token: ${{ secrets.GITHUB_TOKEN }}
           
-      - name: Checkout all branches for multi-branch deployment
+      - name: Remove PR deployment
         run: |
-          # Fetch all branches
-          git fetch --all
-          
-          # Create deployment directory
-          mkdir -p _site
-          
-      - name: Determine deployment path
-        id: deployment-path
-        run: |
-          if [ "${{ github.ref_name }}" = "main" ]; then
-            echo "path=." >> $GITHUB_OUTPUT
-            echo "is-main=true" >> $GITHUB_OUTPUT
-          else
-            # Sanitize branch name for URL
-            BRANCH_PATH=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
-            echo "path=branches/$BRANCH_PATH" >> $GITHUB_OUTPUT
-            echo "is-main=false" >> $GITHUB_OUTPUT
+          # Remove the PR directory if it exists
+          if [ -d "pr/${{ github.event.number }}" ]; then
+            rm -rf "pr/${{ github.event.number }}"
+            echo "Removed PR ${{ github.event.number }} deployment"
           fi
           
-      - name: Build main branch content
+      - name: Regenerate PR index
         run: |
-          # Always deploy main branch to root
-          git checkout main
-          cp *.html _site/
-          
-      - name: Build branch deployments
-        run: |
-          # Create branches directory
-          mkdir -p _site/branches
-          
-          # Deploy current branch if it's not main
-          if [ "${{ github.ref_name }}" != "main" ]; then
-            git checkout ${{ github.ref_name }}
-            BRANCH_PATH=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
-            mkdir -p "_site/branches/$BRANCH_PATH"
-            cp *.html "_site/branches/$BRANCH_PATH/"
-          fi
-          
-          # Also deploy other common branches if they exist
-          for branch in develop staging; do
-            if git show-ref --verify --quiet refs/remotes/origin/$branch; then
-              if [ "$branch" != "${{ github.ref_name }}" ]; then
-                git checkout $branch
-                BRANCH_PATH=$(echo "$branch" | sed 's/[^a-zA-Z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
-                mkdir -p "_site/branches/$BRANCH_PATH"
-                cp *.html "_site/branches/$BRANCH_PATH/" 2>/dev/null || true
-              fi
-            fi
-          done
-          
-      - name: Create branch index page
-        run: |
-          cat > _site/branches/index.html << 'EOF'
+          # Recreate the PR index page
+          mkdir -p pr
+          cat > pr/index.html << 'EOF'
           <!DOCTYPE html>
           <html lang="en">
           <head>
               <meta charset="UTF-8">
               <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Branch Deployments - Experiments</title>
+              <title>PR Deployments - Experiments</title>
               <style>
                   body {
                       font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
@@ -123,31 +82,31 @@ jobs:
                       margin-bottom: 2rem;
                       border-radius: 4px;
                   }
-                  .branch-list {
+                  .pr-list {
                       list-style: none;
                       padding: 0;
                   }
-                  .branch-item {
+                  .pr-item {
                       margin: 1rem 0;
                       padding: 1rem;
                       background: #f7fafc;
                       border-radius: 8px;
                       border-left: 4px solid #667eea;
                   }
-                  .branch-link {
+                  .pr-link {
                       color: #667eea;
                       text-decoration: none;
                       font-weight: 500;
                       display: block;
                   }
-                  .branch-link:hover {
+                  .pr-link:hover {
                       text-decoration: underline;
                   }
-                  .branch-name {
+                  .pr-name {
                       font-size: 1.1em;
                       margin-bottom: 0.5rem;
                   }
-                  .branch-desc {
+                  .pr-desc {
                       font-size: 0.9em;
                       color: #666;
                   }
@@ -163,37 +122,51 @@ jobs:
                       text-decoration: none;
                       font-weight: 600;
                   }
+                  .no-prs {
+                      text-align: center;
+                      color: #666;
+                      font-style: italic;
+                      padding: 2rem;
+                  }
               </style>
           </head>
           <body>
               <div class="container">
-                  <h1>🌿 Branch Deployments</h1>
+                  <h1>🔄 PR Deployments</h1>
                   <div class="deployment-info">
-                      <strong>ℹ️ About Branch Deployments</strong><br>
-                      Each branch is automatically deployed to its own URL when pushed. This allows for testing features and changes before merging to main.
+                      <strong>ℹ️ About PR Deployments</strong><br>
+                      Each pull request is automatically deployed to its own URL when opened or updated. This allows for testing features and changes before merging to main.
                   </div>
-                  <p>Available branch deployments:</p>
-                  <ul class="branch-list" id="branchList">
+                  <p>Available PR deployments:</p>
+                  <ul class="pr-list" id="prList">
           EOF
           
-          # List available branch directories dynamically
-          for branch_dir in _site/branches/*/; do
-            if [ -d "$branch_dir" ] && [ "$branch_dir" != "_site/branches/*/" ]; then
-              branch_name=$(basename "$branch_dir")
-              if [ "$branch_name" != "index.html" ]; then
-                cat >> _site/branches/index.html << EOF
-                      <li class="branch-item">
-                          <a href="./$branch_name/" class="branch-link">
-                              <div class="branch-name">📋 $branch_name</div>
-                              <div class="branch-desc">Branch deployment - Click to view experiments</div>
+          # List available PR directories dynamically
+          pr_count=0
+          for pr_dir in pr/*/; do
+            if [ -d "$pr_dir" ] && [ "$pr_dir" != "pr/*/" ]; then
+              pr_number=$(basename "$pr_dir")
+              if [ "$pr_number" != "index.html" ] && [[ "$pr_number" =~ ^[0-9]+$ ]]; then
+                cat >> pr/index.html << EOF
+                      <li class="pr-item">
+                          <a href="./$pr_number/" class="pr-link">
+                              <div class="pr-name">🔧 PR #$pr_number</div>
+                              <div class="pr-desc">Pull request deployment - Click to view experiments</div>
                           </a>
                       </li>
           EOF
+                pr_count=$((pr_count + 1))
               fi
             fi
           done
           
-          cat >> _site/branches/index.html << 'EOF'
+          if [ $pr_count -eq 0 ]; then
+            cat >> pr/index.html << 'EOF'
+                      <li class="no-prs">No active PR deployments</li>
+          EOF
+          fi
+          
+          cat >> pr/index.html << 'EOF'
                   </ul>
                   <div class="main-link">
                       <a href="/">← Back to Main Site</a>
@@ -203,12 +176,211 @@ jobs:
           </html>
           EOF
           
-      - name: Add branch navigation to main index
+      - name: Commit cleanup changes
         run: |
-          # Check if there are any branch deployments
-          if [ -d "_site/branches" ] && [ "$(find _site/branches -mindepth 1 -maxdepth 1 -type d | wc -l)" -gt 0 ]; then
-            # Add a link to branch deployments in the main index.html
-            sed -i 's|<div class="footer">|<div style="text-align: center; margin-top: 3rem;"><a href="/branches/" style="color: rgba(255,255,255,0.9); text-decoration: none; font-size: 0.95rem; padding: 0.5rem 1rem; background: rgba(255,255,255,0.1); border-radius: 20px; border: 1px solid rgba(255,255,255,0.2);">🌿 View Branch Deployments</a></div>\n        <div class="footer">|' _site/index.html
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          if ! git diff --quiet; then
+            git add .
+            git commit -m "Clean up PR ${{ github.event.number }} deployment"
+            git push
+          fi
+
+  # Build and deploy job
+  deploy:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout current branch/PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+          
+      - name: Checkout gh-pages for existing content
+        run: |
+          # Create deployment directory
+          mkdir -p _site
+          
+          # Fetch gh-pages branch to preserve existing deployments
+          git fetch origin gh-pages:gh-pages 2>/dev/null || echo "No gh-pages branch found"
+          if git show-ref --verify --quiet refs/heads/gh-pages; then
+            # Copy existing content
+            git checkout gh-pages
+            cp -r . _site/ 2>/dev/null || true
+            git checkout ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+          fi
+          
+      - name: Determine deployment path
+        id: deployment-path
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "path=pr/${{ github.event.number }}" >> $GITHUB_OUTPUT
+            echo "is-pr=true" >> $GITHUB_OUTPUT
+            echo "is-main=false" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref_name }}" = "main" ]; then
+            echo "path=." >> $GITHUB_OUTPUT
+            echo "is-pr=false" >> $GITHUB_OUTPUT
+            echo "is-main=true" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Build main branch content
+        if: github.ref_name == 'main'
+        run: |
+          # Deploy main branch to root
+          cp *.html _site/
+          
+      - name: Build PR deployment
+        if: github.event_name == 'pull_request'
+        run: |
+          # Create PR directory
+          mkdir -p "_site/pr/${{ github.event.number }}"
+          cp *.html "_site/pr/${{ github.event.number }}/"
+          
+      - name: Create/Update PR index page
+        run: |
+          # Create PR directory if it doesn't exist
+          mkdir -p _site/pr
+          
+          cat > _site/pr/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>PR Deployments - Experiments</title>
+              <style>
+                  body {
+                      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+                      margin: 0;
+                      padding: 2rem;
+                      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                      min-height: 100vh;
+                      color: #333;
+                  }
+                  .container {
+                      max-width: 800px;
+                      margin: 0 auto;
+                      background: white;
+                      border-radius: 12px;
+                      padding: 2rem;
+                      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+                  }
+                  h1 {
+                      color: #2d3748;
+                      text-align: center;
+                      margin-bottom: 2rem;
+                  }
+                  .deployment-info {
+                      background: #e6f3ff;
+                      border-left: 4px solid #667eea;
+                      padding: 1rem;
+                      margin-bottom: 2rem;
+                      border-radius: 4px;
+                  }
+                  .pr-list {
+                      list-style: none;
+                      padding: 0;
+                  }
+                  .pr-item {
+                      margin: 1rem 0;
+                      padding: 1rem;
+                      background: #f7fafc;
+                      border-radius: 8px;
+                      border-left: 4px solid #667eea;
+                  }
+                  .pr-link {
+                      color: #667eea;
+                      text-decoration: none;
+                      font-weight: 500;
+                      display: block;
+                  }
+                  .pr-link:hover {
+                      text-decoration: underline;
+                  }
+                  .pr-name {
+                      font-size: 1.1em;
+                      margin-bottom: 0.5rem;
+                  }
+                  .pr-desc {
+                      font-size: 0.9em;
+                      color: #666;
+                  }
+                  .main-link {
+                      text-align: center;
+                      margin-top: 2rem;
+                      padding: 1rem;
+                      background: #667eea;
+                      border-radius: 8px;
+                  }
+                  .main-link a {
+                      color: white;
+                      text-decoration: none;
+                      font-weight: 600;
+                  }
+                  .no-prs {
+                      text-align: center;
+                      color: #666;
+                      font-style: italic;
+                      padding: 2rem;
+                  }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>🔄 PR Deployments</h1>
+                  <div class="deployment-info">
+                      <strong>ℹ️ About PR Deployments</strong><br>
+                      Each pull request is automatically deployed to its own URL when opened or updated. This allows for testing features and changes before merging to main.
+                  </div>
+                  <p>Available PR deployments:</p>
+                  <ul class="pr-list" id="prList">
+          EOF
+          
+          # List available PR directories dynamically
+          pr_count=0
+          for pr_dir in _site/pr/*/; do
+            if [ -d "$pr_dir" ] && [ "$pr_dir" != "_site/pr/*/" ]; then
+              pr_number=$(basename "$pr_dir")
+              if [ "$pr_number" != "index.html" ] && [[ "$pr_number" =~ ^[0-9]+$ ]]; then
+                cat >> _site/pr/index.html << EOF
+                      <li class="pr-item">
+                          <a href="./$pr_number/" class="pr-link">
+                              <div class="pr-name">🔧 PR #$pr_number</div>
+                              <div class="pr-desc">Pull request deployment - Click to view experiments</div>
+                          </a>
+                      </li>
+          EOF
+                pr_count=$((pr_count + 1))
+              fi
+            fi
+          done
+          
+          if [ $pr_count -eq 0 ]; then
+            cat >> _site/pr/index.html << 'EOF'
+                      <li class="no-prs">No active PR deployments</li>
+          EOF
+          fi
+          
+          cat >> _site/pr/index.html << 'EOF'
+                  </ul>
+                  <div class="main-link">
+                      <a href="/">← Back to Main Site</a>
+                  </div>
+              </div>
+          </body>
+          </html>
+          EOF
+          
+      - name: Add PR navigation to main index
+        if: github.ref_name == 'main'
+        run: |
+          # Check if there are any PR deployments
+          if [ -d "_site/pr" ] && [ "$(find _site/pr -mindepth 1 -maxdepth 1 -type d | wc -l)" -gt 0 ]; then
+            # Add a link to PR deployments in the main index.html
+            sed -i 's|<div class="footer">|<div style="text-align: center; margin-top: 3rem;"><a href="/pr/" style="color: rgba(255,255,255,0.9); text-decoration: none; font-size: 0.95rem; padding: 0.5rem 1rem; background: rgba(255,255,255,0.1); border-radius: 20px; border: 1px solid rgba(255,255,255,0.2);">🔄 View PR Deployments</a></div>\n        <div class="footer">|' _site/index.html
           fi
           
       - name: Setup Pages

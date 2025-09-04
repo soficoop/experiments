@@ -10,27 +10,27 @@ A collection of interactive experiments, simulations, games, and tools built wit
 - **Pong Game** - Classic Pong game implementation
 - **CSV → MSSQL Generator** - Generate T-SQL UPDATE statements from CSV files
 
-## 🌿 Branch Deployments
+## 🔄 PR Deployments
 
-This repository uses GitHub Pages with automatic branch deployments. Each branch is automatically deployed when code is pushed:
+This repository uses GitHub Pages with automatic pull request deployments. Each pull request is automatically deployed when opened or updated:
 
 - **Main branch**: Deployed to the root URL
-- **Feature branches**: Deployed to `/branches/{branch-name}/`
-- **Develop branch**: Deployed to `/branches/develop/`
+- **Pull requests**: Deployed to `/pr/{pr-number}/`
 
 ### How it works
 
-1. When you push to any tracked branch (`main`, `develop`, `feature/**`, `hotfix/**`), GitHub Actions automatically deploys it
+1. When you open or update a pull request, GitHub Actions automatically deploys it
 2. The main branch is always deployed to the root of the site
-3. Other branches are deployed to subdirectories under `/branches/`
-4. A branch index page at `/branches/` lists all available branch deployments
-5. The main site includes a link to view all branch deployments
+3. Pull requests are deployed to subdirectories under `/pr/`
+4. A PR index page at `/pr/` lists all available PR deployments
+5. The main site includes a link to view all PR deployments
+6. When a PR is closed or merged, its deployment is automatically cleaned up
 
-### Accessing Branch Deployments
+### Accessing PR Deployments
 
 - Main site: `https://soficoop.github.io/experiments/`
-- Branch deployments: `https://soficoop.github.io/experiments/branches/`
-- Specific branch: `https://soficoop.github.io/experiments/branches/{branch-name}/`
+- PR deployments: `https://soficoop.github.io/experiments/pr/`
+- Specific PR: `https://soficoop.github.io/experiments/pr/{pr-number}/`
 
 ## 🚀 Local Development
 
@@ -74,7 +74,8 @@ Then visit `http://localhost:8000` in your browser.
 
 1. Create a feature branch: `git checkout -b feature/my-new-experiment`
 2. Add your experiment
-3. Push the branch - it will be automatically deployed for testing
-4. Create a pull request to merge into main
+3. Open a pull request - it will be automatically deployed for testing
+4. Review your changes at the PR deployment URL
+5. Merge the pull request when ready
 
-The branch deployment system allows you to test your changes live before merging!
+The PR deployment system allows you to test your changes live before merging!
