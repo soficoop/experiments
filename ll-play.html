@@ -1,0 +1,1202 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Leaflet Jerusalem Playground</title>
+        <link
+            rel="stylesheet"
+            href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        />
+        <style>
+            *,
+            *::before,
+            *::after {
+                box-sizing: border-box;
+            }
+
+            body,
+            html {
+                margin: 0;
+                padding: 0;
+                height: 100%;
+                font-family: "Segoe UI", system-ui, sans-serif;
+                overflow: hidden;
+            }
+
+            #app {
+                display: flex;
+                height: 100vh;
+                width: 100vw;
+            }
+
+            /* ── Sidebar ── */
+            #controls {
+                width: 340px;
+                min-width: 340px;
+                background: #ffffff;
+                border-right: 1px solid #e0e0e0;
+                overflow-y: auto;
+                z-index: 1000;
+                display: flex;
+                flex-direction: column;
+                box-shadow: 2px 0 10px rgba(0, 0, 0, 0.08);
+            }
+
+            #sidebar-title {
+                padding: 16px 18px 14px;
+                font-size: 1rem;
+                font-weight: 700;
+                color: #1a1a2e;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                border-bottom: 2px solid #3b82f6;
+                background: #f8faff;
+                flex-shrink: 0;
+            }
+
+            /* ── Collapsible sections ── */
+            .section {
+                border-bottom: 1px solid #f0f0f0;
+            }
+
+            .section-header {
+                display: flex;
+                align-items: center;
+                padding: 11px 18px;
+                cursor: pointer;
+                user-select: none;
+                background: #fafafa;
+                transition: background 0.15s;
+            }
+            .section-header:hover {
+                background: #f0f4ff;
+            }
+
+            .section-header h2 {
+                flex-grow: 1;
+                margin: 0;
+                font-size: 0.72rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.07em;
+                color: #6b7280;
+            }
+
+            .chevron {
+                font-size: 0.6rem;
+                color: #aaa;
+                transition: transform 0.2s;
+            }
+            .section-header.open .chevron {
+                transform: rotate(90deg);
+            }
+
+            .section-body {
+                padding: 12px 18px 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+            .section-body.hidden {
+                display: none;
+            }
+
+            /* ── Form controls ── */
+            select,
+            textarea {
+                width: 100%;
+                padding: 7px 9px;
+                border: 1px solid #d1d5db;
+                border-radius: 6px;
+                font-size: 0.82rem;
+                background: white;
+                color: #374151;
+            }
+            select:focus,
+            textarea:focus {
+                outline: none;
+                border-color: #3b82f6;
+            }
+
+            textarea {
+                font-family: "Courier New", monospace;
+                font-size: 11px;
+                resize: vertical;
+            }
+
+            .slider-row {
+                display: grid;
+                grid-template-columns: 68px 1fr 44px;
+                align-items: center;
+                gap: 8px;
+            }
+            .slider-row label {
+                font-size: 0.78rem;
+                color: #6b7280;
+            }
+            .slider-row .val {
+                font-size: 0.72rem;
+                color: #9ca3af;
+                text-align: right;
+                font-variant-numeric: tabular-nums;
+            }
+
+            input[type="color"] {
+                width: 100%;
+                height: 32px;
+                border: 1px solid #d1d5db;
+                border-radius: 6px;
+                cursor: pointer;
+                padding: 2px 3px;
+            }
+
+            /* ── Preset grid ── */
+            .preset-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 5px;
+            }
+            .preset-btn {
+                padding: 7px 4px;
+                font-size: 0.73rem;
+                border: 1px solid #e5e7eb;
+                border-radius: 6px;
+                background: white;
+                cursor: pointer;
+                transition: all 0.15s;
+                text-align: center;
+                color: #374151;
+            }
+            .preset-btn:hover {
+                background: #eff6ff;
+                border-color: #3b82f6;
+                color: #1d4ed8;
+            }
+
+            /* ── POI list ── */
+            #poi-list {
+                display: flex;
+                flex-direction: column;
+                gap: 5px;
+            }
+
+            .poi-item {
+                display: flex;
+                align-items: center;
+                gap: 9px;
+                padding: 8px 10px;
+                border-radius: 8px;
+                border: 1.5px solid #e5e7eb;
+                background: white;
+                cursor: pointer;
+                transition:
+                    border-color 0.15s,
+                    background 0.15s;
+            }
+            .poi-item:hover {
+                border-color: #93c5fd;
+                background: #f8faff;
+            }
+            .poi-item.active {
+                border-color: #3b82f6;
+                background: #eff6ff;
+            }
+
+            .poi-item input[type="checkbox"] {
+                width: 15px;
+                height: 15px;
+                cursor: pointer;
+                flex-shrink: 0;
+                accent-color: #3b82f6;
+            }
+
+            .poi-dot {
+                width: 28px;
+                height: 28px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 13px;
+                flex-shrink: 0;
+                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+                border: 1.5px solid rgba(255, 255, 255, 0.6);
+            }
+
+            .poi-label {
+                flex-grow: 1;
+                font-size: 0.82rem;
+                font-weight: 500;
+                color: #374151;
+                cursor: pointer;
+            }
+
+            .poi-badge {
+                font-size: 0.67rem;
+                padding: 2px 7px;
+                border-radius: 999px;
+                background: #f3f4f6;
+                color: #9ca3af;
+                font-variant-numeric: tabular-nums;
+                white-space: nowrap;
+                min-width: 28px;
+                text-align: center;
+            }
+            .poi-badge.loading {
+                background: #fef3c7;
+                color: #92400e;
+                animation: pulse 1.1s ease-in-out infinite;
+            }
+            .poi-badge.error {
+                background: #fee2e2;
+                color: #991b1b;
+            }
+            .poi-badge.success {
+                background: #dcfce7;
+                color: #166534;
+            }
+
+            @keyframes pulse {
+                0%,
+                100% {
+                    opacity: 1;
+                }
+                50% {
+                    opacity: 0.45;
+                }
+            }
+
+            #map {
+                flex-grow: 1;
+                height: 100%;
+            }
+
+            /* Leaflet overrides */
+            .leaflet-container {
+                font-family: inherit;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="app">
+            <div id="controls">
+                <div id="sidebar-title">
+                    <span>🗺️</span> Jerusalem Playground
+                </div>
+
+                <!-- PRESETS -->
+                <div class="section">
+                    <div
+                        class="section-header open"
+                        onclick="toggleSection(this)"
+                    >
+                        <h2>Presets</h2>
+                        <span class="chevron">▶</span>
+                    </div>
+                    <div class="section-body">
+                        <div class="preset-grid">
+                            <button
+                                class="preset-btn"
+                                onclick="setPreset('default')"
+                            >
+                                🌍 Default
+                            </button>
+                            <button
+                                class="preset-btn"
+                                onclick="setPreset('dark')"
+                            >
+                                🌑 Dark
+                            </button>
+                            <button
+                                class="preset-btn"
+                                onclick="setPreset('psychedelic')"
+                            >
+                                🌈 Wild
+                            </button>
+                            <button
+                                class="preset-btn"
+                                onclick="setPreset('vintage')"
+                            >
+                                📜 Vintage
+                            </button>
+                            <button
+                                class="preset-btn"
+                                onclick="setPreset('blueprint')"
+                            >
+                                📐 Blueprint
+                            </button>
+                            <button
+                                class="preset-btn"
+                                onclick="setPreset('ghost')"
+                            >
+                                👻 Ghost
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MAP STYLE -->
+                <div class="section">
+                    <div
+                        class="section-header open"
+                        onclick="toggleSection(this)"
+                    >
+                        <h2>Map Style</h2>
+                        <span class="chevron">▶</span>
+                    </div>
+                    <div class="section-body">
+                        <select id="tile-layer" onchange="updateTileLayer()">
+                            <optgroup label="OpenStreetMap">
+                                <option value="osm">Standard</option>
+                                <option value="osm_hot">
+                                    Humanitarian (HOT)
+                                </option>
+                                <option value="osm_de">German Style</option>
+                                <option value="topo">Topographic</option>
+                            </optgroup>
+                            <optgroup label="CartoDB">
+                                <option value="positron">
+                                    Positron (light)
+                                </option>
+                                <option value="positron_nolabels">
+                                    Positron · no labels
+                                </option>
+                                <option value="voyager">Voyager</option>
+                                <option value="voyager_nolabels">
+                                    Voyager · no labels
+                                </option>
+                                <option value="dark_matter">Dark Matter</option>
+                                <option value="dark_nolabels">
+                                    Dark Matter · no labels
+                                </option>
+                            </optgroup>
+                            <optgroup label="ESRI">
+                                <option value="esri_satellite">
+                                    🛰 Satellite Imagery
+                                </option>
+                                <option value="esri_streets">Streets</option>
+                                <option value="esri_topo">Topographic</option>
+                                <option value="esri_natgeo">
+                                    National Geographic
+                                </option>
+                                <option value="esri_gray">
+                                    Light Gray Canvas
+                                </option>
+                                <option value="esri_ocean">🌊 Ocean</option>
+                                <option value="esri_terrain">Terrain</option>
+                                <option value="esri_shaded">
+                                    Shaded Relief
+                                </option>
+                                <option value="esri_physical">
+                                    Physical Map
+                                </option>
+                            </optgroup>
+                            <optgroup label="Stadia / Stamen">
+                                <option value="stadia_smooth">
+                                    Alidade Smooth
+                                </option>
+                                <option value="stadia_smooth_dark">
+                                    Alidade Smooth Dark
+                                </option>
+                                <option value="stadia_outdoors">
+                                    Outdoors
+                                </option>
+                                <option value="stamen_toner">
+                                    Stamen Toner
+                                </option>
+                                <option value="stamen_toner_lite">
+                                    Stamen Toner Lite
+                                </option>
+                                <option value="stamen_watercolor">
+                                    🎨 Stamen Watercolor
+                                </option>
+                                <option value="stamen_terrain">
+                                    Stamen Terrain
+                                </option>
+                            </optgroup>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- VISUAL FILTERS -->
+                <div class="section">
+                    <div
+                        class="section-header open"
+                        onclick="toggleSection(this)"
+                    >
+                        <h2>Visual Filters</h2>
+                        <span class="chevron">▶</span>
+                    </div>
+                    <div class="section-body">
+                        <div class="slider-row">
+                            <label>Hue</label>
+                            <input
+                                type="range"
+                                id="hue"
+                                min="0"
+                                max="360"
+                                value="0"
+                                oninput="updateFilters()"
+                            />
+                            <span class="val" id="hue-val">0°</span>
+                        </div>
+                        <div class="slider-row">
+                            <label>Saturate</label>
+                            <input
+                                type="range"
+                                id="saturate"
+                                min="0"
+                                max="500"
+                                value="100"
+                                oninput="updateFilters()"
+                            />
+                            <span class="val" id="saturate-val">100%</span>
+                        </div>
+                        <div class="slider-row">
+                            <label>Contrast</label>
+                            <input
+                                type="range"
+                                id="contrast"
+                                min="0"
+                                max="300"
+                                value="100"
+                                oninput="updateFilters()"
+                            />
+                            <span class="val" id="contrast-val">100%</span>
+                        </div>
+                        <div class="slider-row">
+                            <label>Brightness</label>
+                            <input
+                                type="range"
+                                id="brightness"
+                                min="0"
+                                max="200"
+                                value="100"
+                                oninput="updateFilters()"
+                            />
+                            <span class="val" id="brightness-val">100%</span>
+                        </div>
+                        <div class="slider-row">
+                            <label>Invert</label>
+                            <input
+                                type="range"
+                                id="invert"
+                                min="0"
+                                max="100"
+                                value="0"
+                                oninput="updateFilters()"
+                            />
+                            <span class="val" id="invert-val">0%</span>
+                        </div>
+                        <div class="slider-row">
+                            <label>Grayscale</label>
+                            <input
+                                type="range"
+                                id="grayscale"
+                                min="0"
+                                max="100"
+                                value="0"
+                                oninput="updateFilters()"
+                            />
+                            <span class="val" id="grayscale-val">0%</span>
+                        </div>
+                        <div class="slider-row">
+                            <label>Blur</label>
+                            <input
+                                type="range"
+                                id="blur"
+                                min="0"
+                                max="10"
+                                step="0.1"
+                                value="0"
+                                oninput="updateFilters()"
+                            />
+                            <span class="val" id="blur-val">0px</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TYPOGRAPHY -->
+                <div class="section">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        <h2>Typography</h2>
+                        <span class="chevron">▶</span>
+                    </div>
+                    <div class="section-body hidden">
+                        <select id="font-family" onchange="updateTypography()">
+                            <option value="'Segoe UI', system-ui, sans-serif">
+                                System Sans
+                            </option>
+                            <option value="'Georgia', serif">
+                                Georgia Serif
+                            </option>
+                            <option value="'Courier New', monospace">
+                                Courier Mono
+                            </option>
+                            <option value="'Comic Sans MS', cursive">
+                                Comic Sans 😈
+                            </option>
+                            <option value="'Impact', sans-serif">Impact</option>
+                        </select>
+                        <div class="slider-row">
+                            <label>Size</label>
+                            <input
+                                type="range"
+                                id="font-size"
+                                min="8"
+                                max="24"
+                                value="12"
+                                oninput="updateTypography()"
+                            />
+                            <span class="val" id="font-size-val">12px</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- UI THEME -->
+                <div class="section">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        <h2>UI Theme</h2>
+                        <span class="chevron">▶</span>
+                    </div>
+                    <div class="section-body hidden">
+                        <label style="font-size: 0.75rem; color: #6b7280"
+                            >Accent Color</label
+                        >
+                        <input
+                            type="color"
+                            id="primary-color"
+                            value="#007bff"
+                            oninput="updateUITheme()"
+                        />
+                        <div class="slider-row">
+                            <label>Opacity</label>
+                            <input
+                                type="range"
+                                id="map-opacity"
+                                min="0"
+                                max="100"
+                                value="100"
+                                oninput="updateMapOpacity()"
+                            />
+                            <span class="val" id="map-opacity-val">100%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CUSTOM CSS -->
+                <div class="section">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        <h2>Custom CSS</h2>
+                        <span class="chevron">▶</span>
+                    </div>
+                    <div class="section-body hidden">
+                        <textarea
+                            id="custom-css"
+                            rows="4"
+                            oninput="updateCustomCSS()"
+                            placeholder=".leaflet-tile { opacity: 0.8; }&#10;.leaflet-popup-content-wrapper { border-radius: 16px; }"
+                        ></textarea>
+                    </div>
+                </div>
+
+                <!-- POINTS OF INTEREST -->
+                <div class="section">
+                    <div
+                        class="section-header open"
+                        onclick="toggleSection(this)"
+                    >
+                        <h2>Points of Interest</h2>
+                        <span class="chevron">▶</span>
+                    </div>
+                    <div class="section-body">
+                        <div id="poi-list"><!-- filled by JS --></div>
+                    </div>
+                </div>
+            </div>
+            <!-- /controls -->
+
+            <div id="map"></div>
+        </div>
+
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <script>
+            // ═══════════════════════════════════════════
+            //  MAP SETUP
+            // ═══════════════════════════════════════════
+            const JERUSALEM = [31.7683, 35.2137];
+            // Bounding box covering central Jerusalem (S, W, N, E)
+            const BBOX = "31.720,35.160,31.830,35.270";
+            const OVERPASS = "https://overpass-api.de/api/interpreter";
+
+            const map = L.map("map").setView(JERUSALEM, 14);
+            let currentTileLayer;
+
+            const TILE_URLS = {
+                // ── OpenStreetMap family ──
+                osm: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                osm_hot:
+                    "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
+                osm_de: "https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png",
+                topo: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+
+                // ── CartoDB ──
+                positron:
+                    "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+                positron_nolabels:
+                    "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+                voyager:
+                    "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+                voyager_nolabels:
+                    "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png",
+                dark_matter:
+                    "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+                dark_nolabels:
+                    "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
+
+                // ── ESRI ──
+                esri_satellite:
+                    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                esri_streets:
+                    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+                esri_topo:
+                    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+                esri_natgeo:
+                    "https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}",
+                esri_gray:
+                    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+                esri_ocean:
+                    "https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}",
+                esri_terrain:
+                    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}",
+                esri_shaded:
+                    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}",
+                esri_physical:
+                    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}",
+
+                // ── Stadia / Stamen ──
+                stadia_smooth:
+                    "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png",
+                stadia_smooth_dark:
+                    "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png",
+                stadia_outdoors:
+                    "https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png",
+                stamen_toner:
+                    "https://tiles.stadiamaps.com/tiles/stamen_toner/{z}/{x}/{y}{r}.png",
+                stamen_toner_lite:
+                    "https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png",
+                stamen_watercolor:
+                    "https://tiles.stadiamaps.com/tiles/stamen_watercolor/{z}/{x}/{y}.jpg",
+                stamen_terrain:
+                    "https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}{r}.png",
+            };
+
+            // ═══════════════════════════════════════════
+            //  POI CATEGORY DEFINITIONS
+            // ═══════════════════════════════════════════
+            const POI_CATEGORIES = [
+                {
+                    key: "trees",
+                    label: "Trees",
+                    emoji: "🌳",
+                    bg: "#2e7d32",
+                    limit: 1000,
+                    query: `node["natural"="tree"](${BBOX});`,
+                    popup: (t) =>
+                        `<b>🌳 Tree</b>${t.species ? `<br><small>Species: <i>${t.species}</i></small>` : ""}${t.height ? `<br><small>Height: ${t.height} m</small>` : ""}`,
+                },
+                {
+                    key: "bus_stops",
+                    label: "Bus Stops",
+                    emoji: "🚌",
+                    bg: "#1565c0",
+                    limit: 600,
+                    query: `node["highway"="bus_stop"](${BBOX});`,
+                    popup: (t) =>
+                        `<b>🚌 Bus Stop</b>${t.name ? `<br>${t.name}` : ""}${t["name:en"] ? `<br><small>${t["name:en"]}</small>` : ""}${t.ref ? `<br><small>Line: ${t.ref}</small>` : ""}`,
+                },
+                {
+                    key: "synagogues",
+                    label: "Synagogues",
+                    emoji: "🕍",
+                    bg: "#1a237e",
+                    limit: 300,
+                    query: `node["amenity"="place_of_worship"]["religion"="jewish"](${BBOX});
+                way["amenity"="place_of_worship"]["religion"="jewish"](${BBOX});`,
+                    popup: (t) =>
+                        `<b>🕍 Synagogue</b>${t.name ? `<br>${t.name}` : ""}${t["name:en"] ? `<br><small>${t["name:en"]}</small>` : ""}`,
+                },
+                {
+                    key: "mosques",
+                    label: "Mosques",
+                    emoji: "🕌",
+                    bg: "#1b5e20",
+                    limit: 300,
+                    query: `node["amenity"="place_of_worship"]["religion"="muslim"](${BBOX});
+                way["amenity"="place_of_worship"]["religion"="muslim"](${BBOX});`,
+                    popup: (t) =>
+                        `<b>🕌 Mosque</b>${t.name ? `<br>${t.name}` : ""}${t["name:en"] ? `<br><small>${t["name:en"]}</small>` : ""}`,
+                },
+                {
+                    key: "churches",
+                    label: "Churches",
+                    emoji: "⛪",
+                    bg: "#6a1b9a",
+                    limit: 300,
+                    query: `node["amenity"="place_of_worship"]["religion"="christian"](${BBOX});
+                way["amenity"="place_of_worship"]["religion"="christian"](${BBOX});`,
+                    popup: (t) =>
+                        `<b>⛪ Church</b>${t.name ? `<br>${t.name}` : ""}${t["name:en"] ? `<br><small>${t["name:en"]}</small>` : ""}`,
+                },
+                {
+                    key: "street_lights",
+                    label: "Street Lights",
+                    emoji: "💡",
+                    bg: "#e65100",
+                    limit: 1000,
+                    query: `node["highway"="street_lamp"](${BBOX});`,
+                    popup: (t) =>
+                        `<b>💡 Street Light</b>${t.lamp_type ? `<br><small>Type: ${t.lamp_type}</small>` : ""}${t.support ? `<br><small>Support: ${t.support}</small>` : ""}`,
+                },
+                {
+                    key: "cafes",
+                    label: "Cafes",
+                    emoji: "☕",
+                    bg: "#4e342e",
+                    limit: 500,
+                    query: `node["amenity"="cafe"](${BBOX});`,
+                    popup: (t) =>
+                        `<b>☕ Cafe</b>${t.name ? `<br>${t.name}` : ""}${t["name:en"] ? `<br><small>${t["name:en"]}</small>` : ""}${t.opening_hours ? `<br><small>🕐 ${t.opening_hours}</small>` : ""}`,
+                },
+                {
+                    key: "restaurants",
+                    label: "Restaurants",
+                    emoji: "🍽️",
+                    bg: "#b71c1c",
+                    limit: 500,
+                    query: `node["amenity"="restaurant"](${BBOX});`,
+                    popup: (t) =>
+                        `<b>🍽️ Restaurant</b>${t.name ? `<br>${t.name}` : ""}${t.cuisine ? `<br><small>Cuisine: ${t.cuisine}</small>` : ""}${t.kosher ? `<br><small>Kosher: ${t.kosher}</small>` : ""}`,
+                },
+                {
+                    key: "hospitals",
+                    label: "Hospitals & Clinics",
+                    emoji: "🏥",
+                    bg: "#c62828",
+                    limit: 200,
+                    query: `node["amenity"~"^(hospital|clinic|doctors)$"](${BBOX});`,
+                    popup: (t) =>
+                        `<b>🏥 ${t.amenity || "Healthcare"}</b>${t.name ? `<br>${t.name}` : ""}${t["name:en"] ? `<br><small>${t["name:en"]}</small>` : ""}`,
+                },
+                {
+                    key: "museums",
+                    label: "Museums",
+                    emoji: "🏛️",
+                    bg: "#37474f",
+                    limit: 200,
+                    query: `node["tourism"="museum"](${BBOX});
+                way["tourism"="museum"](${BBOX});`,
+                    popup: (t) =>
+                        `<b>🏛️ Museum</b>${t.name ? `<br>${t.name}` : ""}${t["name:en"] ? `<br><small>${t["name:en"]}</small>` : ""}${t.website ? `<br><a href="${t.website}" target="_blank" style="font-size:11px">Website ↗</a>` : ""}`,
+                },
+                {
+                    key: "benches",
+                    label: "Benches",
+                    emoji: "🪑",
+                    bg: "#795548",
+                    limit: 1000,
+                    query: `node["amenity"="bench"](${BBOX});`,
+                    popup: (t) =>
+                        `<b>🪑 Bench</b>${t.material ? `<br><small>Material: ${t.material}</small>` : ""}${t.backrest ? `<br><small>Backrest: ${t.backrest}</small>` : ""}`,
+                },
+                {
+                    key: "water",
+                    label: "Drinking Water",
+                    emoji: "🚰",
+                    bg: "#0277bd",
+                    limit: 400,
+                    query: `node["amenity"="drinking_water"](${BBOX});`,
+                    popup: (t) =>
+                        `<b>🚰 Drinking Water</b>${t.access ? `<br><small>Access: ${t.access}</small>` : ""}${t.fee ? `<br><small>Fee: ${t.fee}</small>` : ""}`,
+                },
+                {
+                    key: "supermarkets",
+                    label: "Supermarkets",
+                    emoji: "🛒",
+                    bg: "#558b2f",
+                    limit: 200,
+                    query: `node["shop"~"^(supermarket|convenience|grocery)$"](${BBOX});`,
+                    popup: (t) =>
+                        `<b>🛒 ${t.shop || "Shop"}</b>${t.name ? `<br>${t.name}` : ""}${t["name:en"] ? `<br><small>${t["name:en"]}</small>` : ""}`,
+                },
+                {
+                    key: "atms",
+                    label: "ATMs",
+                    emoji: "🏧",
+                    bg: "#00695c",
+                    limit: 300,
+                    query: `node["amenity"="atm"](${BBOX});`,
+                    popup: (t) =>
+                        `<b>🏧 ATM</b>${t.operator ? `<br><small>${t.operator}</small>` : ""}${t.currency ? `<br><small>Currency: ${t.currency}</small>` : ""}`,
+                },
+                {
+                    key: "parking",
+                    label: "Parking",
+                    emoji: "🅿️",
+                    bg: "#455a64",
+                    limit: 300,
+                    query: `node["amenity"="parking"](${BBOX});
+                way["amenity"="parking"](${BBOX});`,
+                    popup: (t) =>
+                        `<b>🅿️ Parking</b>${t.name ? `<br>${t.name}` : ""}${t.fee ? `<br><small>Fee: ${t.fee}</small>` : ""}${t.capacity ? `<br><small>Capacity: ${t.capacity}</small>` : ""}`,
+                },
+            ];
+
+            // ═══════════════════════════════════════════
+            //  POI STATE
+            // ═══════════════════════════════════════════
+            const poiLayers = {}; // key → L.layerGroup (currently on map)
+            const poiCache = {}; // key → raw elements array (persists after hide)
+
+            function createPOIIcon(emoji, bg) {
+                return L.divIcon({
+                    html: `<div style="background:${bg};border:2px solid rgba(255,255,255,0.75);border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.35);">${emoji}</div>`,
+                    className: "",
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14],
+                    popupAnchor: [0, -16],
+                });
+            }
+
+            function setBadge(key, state, text) {
+                const el = document.getElementById(`poi-badge-${key}`);
+                if (!el) return;
+                el.className = `poi-badge ${state}`;
+                el.textContent = text;
+            }
+
+            async function loadPOI(cat) {
+                const { key } = cat;
+                setBadge(key, "loading", "…");
+
+                if (poiCache[key]) {
+                    renderPOI(cat, poiCache[key]);
+                    return;
+                }
+
+                const ql = `[out:json][timeout:30];
+(
+  ${cat.query}
+);
+out center ${cat.limit};`;
+
+                try {
+                    const res = await fetch(OVERPASS, {
+                        method: "POST",
+                        body: "data=" + encodeURIComponent(ql),
+                    });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const data = await res.json();
+                    poiCache[key] = data.elements || [];
+                    renderPOI(cat, poiCache[key]);
+                } catch (err) {
+                    console.error(`POI load failed for ${key}:`, err);
+                    setBadge(key, "error", "error");
+                }
+            }
+
+            function renderPOI(cat, elements) {
+                const { key } = cat;
+
+                // Remove old layer if present
+                if (poiLayers[key]) map.removeLayer(poiLayers[key]);
+
+                const icon = createPOIIcon(cat.emoji, cat.bg);
+                const group = L.layerGroup();
+
+                elements.forEach((el) => {
+                    // nodes have lat/lon directly; ways/relations expose a center object
+                    const lat = el.lat ?? el.center?.lat;
+                    const lon = el.lon ?? el.center?.lon;
+                    if (lat == null || lon == null) return;
+
+                    const tags = el.tags || {};
+                    L.marker([lat, lon], { icon })
+                        .bindPopup(cat.popup(tags), { maxWidth: 240 })
+                        .addTo(group);
+                });
+
+                poiLayers[key] = group;
+                group.addTo(map);
+
+                const n = elements.length;
+                setBadge(key, "success", n >= cat.limit ? `${n}+` : String(n));
+            }
+
+            function hidePOI(key) {
+                if (poiLayers[key]) map.removeLayer(poiLayers[key]);
+                setBadge(key, "", "");
+            }
+
+            function togglePOI(key, enabled) {
+                const cat = POI_CATEGORIES.find((c) => c.key === key);
+                if (!cat) return;
+                document
+                    .getElementById(`poi-item-${key}`)
+                    ?.classList.toggle("active", enabled);
+                enabled ? loadPOI(cat) : hidePOI(key);
+            }
+
+            // ── Render the POI list ──
+            function renderPOIList() {
+                const list = document.getElementById("poi-list");
+                list.innerHTML = "";
+                POI_CATEGORIES.forEach((cat) => {
+                    const item = document.createElement("div");
+                    item.className = "poi-item";
+                    item.id = `poi-item-${cat.key}`;
+                    item.innerHTML = `
+            <input type="checkbox" id="poi-check-${cat.key}" onchange="togglePOI('${cat.key}', this.checked)">
+            <div class="poi-dot" style="background:${cat.bg};">${cat.emoji}</div>
+            <label class="poi-label" for="poi-check-${cat.key}">${cat.label}</label>
+            <span class="poi-badge" id="poi-badge-${cat.key}"></span>
+        `;
+                    // Clicking the card (not just the checkbox) also toggles
+                    item.addEventListener("click", (e) => {
+                        if (
+                            e.target.tagName === "INPUT" ||
+                            e.target.tagName === "A" ||
+                            e.target.tagName === "LABEL"
+                        )
+                            return;
+                        const cb = document.getElementById(
+                            `poi-check-${cat.key}`,
+                        );
+                        cb.checked = !cb.checked;
+                        togglePOI(cat.key, cb.checked);
+                    });
+                    list.appendChild(item);
+                });
+            }
+
+            // ═══════════════════════════════════════════
+            //  COLLAPSIBLE SECTIONS
+            // ═══════════════════════════════════════════
+            function toggleSection(header) {
+                const body = header.nextElementSibling;
+                const open = header.classList.toggle("open");
+                body.classList.toggle("hidden", !open);
+            }
+
+            // ═══════════════════════════════════════════
+            //  STYLE CONTROLS
+            // ═══════════════════════════════════════════
+            function updateTileLayer() {
+                const key = document.getElementById("tile-layer").value;
+                if (currentTileLayer) map.removeLayer(currentTileLayer);
+                currentTileLayer = L.tileLayer(TILE_URLS[key], {
+                    attribution:
+                        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                }).addTo(map);
+            }
+
+            function updateFilters() {
+                const g = (id) => document.getElementById(id).value;
+                const hue = g("hue"),
+                    sat = g("saturate"),
+                    con = g("contrast"),
+                    bri = g("brightness"),
+                    inv = g("invert"),
+                    grey = g("grayscale"),
+                    blur = g("blur");
+
+                document.getElementById("hue-val").textContent = hue + "°";
+                document.getElementById("saturate-val").textContent = sat + "%";
+                document.getElementById("contrast-val").textContent = con + "%";
+                document.getElementById("brightness-val").textContent =
+                    bri + "%";
+                document.getElementById("invert-val").textContent = inv + "%";
+                document.getElementById("grayscale-val").textContent =
+                    grey + "%";
+                document.getElementById("blur-val").textContent = blur + "px";
+
+                document.getElementById("map").style.filter =
+                    `hue-rotate(${hue}deg) saturate(${sat}%) contrast(${con}%) brightness(${bri}%) invert(${inv}%) grayscale(${grey}%) blur(${blur}px)`;
+            }
+
+            function updateTypography() {
+                const font = document.getElementById("font-family").value;
+                const size = document.getElementById("font-size").value;
+                document.getElementById("font-size-val").textContent =
+                    size + "px";
+                injectStyle(
+                    "typography-override",
+                    `.leaflet-container, .leaflet-popup-content, .leaflet-tooltip {
+            font-family: ${font} !important;
+            font-size: ${size}px !important;
+        }`,
+                );
+            }
+
+            function updateUITheme() {
+                const color = document.getElementById("primary-color").value;
+                injectStyle(
+                    "ui-theme-override",
+                    `.leaflet-control-zoom a { color: ${color} !important; border-color: ${color}55 !important; }`,
+                );
+            }
+
+            function updateMapOpacity() {
+                const val = document.getElementById("map-opacity").value;
+                document.getElementById("map-opacity-val").textContent =
+                    val + "%";
+                document.getElementById("map").style.opacity = val / 100;
+            }
+
+            function updateCustomCSS() {
+                injectStyle(
+                    "custom-css-override",
+                    document.getElementById("custom-css").value,
+                );
+            }
+
+            function injectStyle(id, css) {
+                let el = document.getElementById(id);
+                if (!el) {
+                    el = document.createElement("style");
+                    el.id = id;
+                    document.head.appendChild(el);
+                }
+                el.innerHTML = css;
+            }
+
+            // ═══════════════════════════════════════════
+            //  PRESETS
+            // ═══════════════════════════════════════════
+            function setPreset(name) {
+                const s = (id, v) => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = v;
+                };
+                const presets = {
+                    default: {
+                        tile: "osm",
+                        hue: 0,
+                        sat: 100,
+                        con: 100,
+                        bri: 100,
+                        inv: 0,
+                        grey: 0,
+                        blur: 0,
+                        color: "#007bff",
+                        opa: 100,
+                        css: "",
+                    },
+                    dark: {
+                        tile: "dark_matter",
+                        hue: 0,
+                        sat: 80,
+                        con: 120,
+                        bri: 80,
+                        inv: 0,
+                        grey: 0,
+                        blur: 0,
+                        color: "#bb86fc",
+                        opa: 100,
+                        css: "",
+                    },
+                    psychedelic: {
+                        tile: "osm",
+                        hue: 180,
+                        sat: 300,
+                        con: 150,
+                        bri: 110,
+                        inv: 20,
+                        grey: 0,
+                        blur: 0,
+                        color: "#ff00ff",
+                        opa: 100,
+                        css: "",
+                    },
+                    vintage: {
+                        tile: "voyager",
+                        hue: 30,
+                        sat: 50,
+                        con: 90,
+                        bri: 110,
+                        inv: 0,
+                        grey: 30,
+                        blur: 0,
+                        color: "#8b4513",
+                        opa: 100,
+                        css: "",
+                    },
+                    blueprint: {
+                        tile: "osm",
+                        hue: 200,
+                        sat: 0,
+                        con: 120,
+                        bri: 100,
+                        inv: 100,
+                        grey: 0,
+                        blur: 0,
+                        color: "#ffffff",
+                        opa: 100,
+                        css: ".leaflet-tile { opacity: 0.8; }",
+                    },
+                    ghost: {
+                        tile: "dark_matter",
+                        hue: 0,
+                        sat: 0,
+                        con: 100,
+                        bri: 150,
+                        inv: 0,
+                        grey: 100,
+                        blur: 2,
+                        color: "#ffffff",
+                        opa: 60,
+                        css: "",
+                    },
+                };
+                const p = presets[name];
+                if (!p) return;
+                s("tile-layer", p.tile);
+                s("hue", p.hue);
+                s("saturate", p.sat);
+                s("contrast", p.con);
+                s("brightness", p.bri);
+                s("invert", p.inv);
+                s("grayscale", p.grey);
+                s("blur", p.blur);
+                s("primary-color", p.color);
+                s("map-opacity", p.opa);
+                s("custom-css", p.css);
+                updateTileLayer();
+                updateFilters();
+                updateTypography();
+                updateUITheme();
+                updateMapOpacity();
+                updateCustomCSS();
+            }
+
+            // ═══════════════════════════════════════════
+            //  INIT
+            // ═══════════════════════════════════════════
+            updateTileLayer();
+            updateFilters();
+            updateTypography();
+            updateUITheme();
+            updateMapOpacity();
+            renderPOIList();
+
+            L.marker(JERUSALEM)
+                .addTo(map)
+                .bindPopup(
+                    "<b>Jerusalem</b><br><small>Check POIs in the sidebar →</small>",
+                )
+                .openPopup();
+        </script>
+    </body>
+</html>
