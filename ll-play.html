@@ -299,6 +299,29 @@
                 color: #854d0e;
             }
 
+            /* Stadia key status badge */
+            #stadia-key-status {
+                font-size: 0.7rem;
+                padding: 4px 9px;
+                border-radius: 5px;
+                margin-top: 4px;
+                line-height: 1.5;
+            }
+            #stadia-key-status.has-key {
+                background: #dcfce7;
+                color: #166534;
+            }
+            #stadia-key-status.no-key {
+                background: #f3f4f6;
+                color: #6b7280;
+            }
+            #stadia-key-status code {
+                font-size: 0.65rem;
+                background: #e5e7eb;
+                padding: 1px 4px;
+                border-radius: 3px;
+            }
+
             /* Leaflet overrides */
             .leaflet-container {
                 font-family: inherit;
@@ -375,11 +398,13 @@
                     <div class="section-body">
                         <select id="tile-layer" onchange="updateTileLayer()">
                             <optgroup label="OpenStreetMap">
-                                <option value="osm">Standard</option>
-                                <option value="osm_hot">
-                                    Humanitarian (HOT)
+                                <option value="osm_hot" selected>
+                                    🔴 Humanitarian (HOT)
                                 </option>
+                                <option value="osm">Standard</option>
                                 <option value="osm_de">German Style</option>
+                                <option value="osm_fr">French Style</option>
+                                <option value="cyclosm">🚲 CyclOSM</option>
                                 <option value="topo">Topographic</option>
                             </optgroup>
                             <optgroup label="CartoDB">
@@ -435,6 +460,9 @@
                                 <option value="stamen_toner_lite">
                                     Stamen Toner Lite
                                 </option>
+                                <option value="stamen_toner_bg">
+                                    Stamen Toner (no labels)
+                                </option>
                                 <option value="stamen_watercolor">
                                     🎨 Stamen Watercolor
                                 </option>
@@ -442,7 +470,21 @@
                                     Stamen Terrain
                                 </option>
                             </optgroup>
+                            <optgroup label="Transit">
+                                <option value="opnvkarte">
+                                    🚌 OPNVKarte (Public Transit)
+                                </option>
+                                <option value="openrailway">
+                                    🚆 OpenRailwayMap
+                                </option>
+                            </optgroup>
+                            <optgroup label="Special">
+                                <option value="nasa_night">
+                                    🌃 NASA Earth at Night
+                                </option>
+                            </optgroup>
                         </select>
+                        <div id="stadia-key-status"></div>
                     </div>
                 </div>
 
@@ -655,6 +697,35 @@
             // ═══════════════════════════════════════════
             const JERUSALEM = [31.7683, 35.2137];
 
+            // ── Stadia API key (read once from ?stadia_key=… in the URL) ─────────
+            const STADIA_KEY =
+                new URLSearchParams(window.location.search).get("stadia_key") ??
+                "";
+
+            (function renderStadiaKeyBadge() {
+                const el = document.getElementById("stadia-key-status");
+                if (!el) return;
+                if (STADIA_KEY) {
+                    el.className = "has-key";
+                    el.textContent = `✔ Stadia key active (…${STADIA_KEY.slice(-6)})`;
+                } else {
+                    el.className = "no-key";
+                    el.innerHTML =
+                        "Stadia tiles need a key outside localhost — append <code>?stadia_key=…</code> to the URL";
+                }
+            })();
+
+            // Returns the tile URL with the API key appended for Stadia tiles
+            function buildTileUrl(url) {
+                if (!STADIA_KEY || !url.includes("stadiamaps.com")) return url;
+                return (
+                    url +
+                    (url.includes("?") ? "&" : "?") +
+                    "api_key=" +
+                    STADIA_KEY
+                );
+            }
+
             // ── OSM viewport tile fetching ──────────────────────────────────────
             // The OSM /map API has a hard 50,000-node limit per request.
             // We work around it by splitting the world into small 0.02° tiles
@@ -778,63 +849,143 @@
             const map = L.map("map").setView(JERUSALEM, 14);
             let currentTileLayer;
 
-            const TILE_URLS = {
+            // Each entry: { url, attr, maxZoom? }
+            const TILE_DEFS = {
                 // ── OpenStreetMap family ──
-                osm: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                osm_hot:
-                    "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
-                osm_de: "https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png",
-                topo: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
-
+                osm_hot: {
+                    url: "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
+                    attr: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles by <a href="https://www.hotosm.org/">HOT</a>',
+                },
+                osm: {
+                    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                    attr: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                },
+                osm_de: {
+                    url: "https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png",
+                    attr: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                },
+                osm_fr: {
+                    url: "https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png",
+                    attr: '© OpenStreetMap France | © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                },
+                cyclosm: {
+                    url: "https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
+                    attr: '<a href="https://github.com/cyclosm/cyclosm-cartocss-style/releases">CyclOSM</a> | © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                },
+                topo: {
+                    url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+                    attr: 'Map data: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Style: © <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
+                },
                 // ── CartoDB ──
-                positron:
-                    "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-                positron_nolabels:
-                    "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
-                voyager:
-                    "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-                voyager_nolabels:
-                    "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png",
-                dark_matter:
-                    "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-                dark_nolabels:
-                    "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
-
+                positron: {
+                    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+                    attr: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+                },
+                positron_nolabels: {
+                    url: "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+                    attr: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+                },
+                voyager: {
+                    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+                    attr: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+                },
+                voyager_nolabels: {
+                    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png",
+                    attr: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+                },
+                dark_matter: {
+                    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+                    attr: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+                },
+                dark_nolabels: {
+                    url: "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
+                    attr: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+                },
                 // ── ESRI ──
-                esri_satellite:
-                    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-                esri_streets:
-                    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
-                esri_topo:
-                    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-                esri_natgeo:
-                    "https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}",
-                esri_gray:
-                    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-                esri_ocean:
-                    "https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}",
-                esri_terrain:
-                    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}",
-                esri_shaded:
-                    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}",
-                esri_physical:
-                    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}",
-
+                esri_satellite: {
+                    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                    attr: "Tiles © Esri — Source: Esri, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP and the GIS User Community",
+                },
+                esri_streets: {
+                    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+                    attr: "Tiles © Esri — Source: Esri, HERE, DeLorme, USGS, Intermap, iPC, NRCAN, METI, Esri Japan, METI, Esri China (HK), Esri (Thailand), MapmyIndia, TomTom",
+                },
+                esri_topo: {
+                    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+                    attr: "Tiles © Esri — Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, FAO, NPS, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (HK)",
+                },
+                esri_natgeo: {
+                    url: "https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}",
+                    attr: "Tiles © Esri — National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC",
+                },
+                esri_gray: {
+                    url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+                    attr: "Tiles © Esri — Esri, DeLorme, NAVTEQ",
+                },
+                esri_ocean: {
+                    url: "https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}",
+                    attr: "Tiles © Esri — Sources: GEBCO, NOAA, CHS, OSU, UNH, CSUMB, National Geographic, DeLorme, NAVTEQ, and Esri",
+                },
+                esri_terrain: {
+                    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}",
+                    attr: "Tiles © Esri — Source: USGS, Esri, TANA, DeLorme, and NPS",
+                },
+                esri_shaded: {
+                    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}",
+                    attr: "Tiles © Esri — Source: Esri",
+                },
+                esri_physical: {
+                    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}",
+                    attr: "Tiles © Esri — Source: US National Park Service",
+                },
                 // ── Stadia / Stamen ──
-                stadia_smooth:
-                    "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png",
-                stadia_smooth_dark:
-                    "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png",
-                stadia_outdoors:
-                    "https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png",
-                stamen_toner:
-                    "https://tiles.stadiamaps.com/tiles/stamen_toner/{z}/{x}/{y}{r}.png",
-                stamen_toner_lite:
-                    "https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png",
-                stamen_watercolor:
-                    "https://tiles.stadiamaps.com/tiles/stamen_watercolor/{z}/{x}/{y}.jpg",
-                stamen_terrain:
-                    "https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}{r}.png",
+                stadia_smooth: {
+                    url: "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png",
+                    attr: '© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                },
+                stadia_smooth_dark: {
+                    url: "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png",
+                    attr: '© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                },
+                stadia_outdoors: {
+                    url: "https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png",
+                    attr: '© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                },
+                stamen_toner: {
+                    url: "https://tiles.stadiamaps.com/tiles/stamen_toner/{z}/{x}/{y}{r}.png",
+                    attr: '© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://stamen.com/">Stamen Design</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                },
+                stamen_toner_lite: {
+                    url: "https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png",
+                    attr: '© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://stamen.com/">Stamen Design</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                },
+                stamen_toner_bg: {
+                    url: "https://tiles.stadiamaps.com/tiles/stamen_toner_background/{z}/{x}/{y}{r}.png",
+                    attr: '© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://stamen.com/">Stamen Design</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                },
+                stamen_watercolor: {
+                    url: "https://tiles.stadiamaps.com/tiles/stamen_watercolor/{z}/{x}/{y}.jpg",
+                    attr: '© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://stamen.com/">Stamen Design</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                },
+                stamen_terrain: {
+                    url: "https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}{r}.png",
+                    attr: '© <a href="https://stadiamaps.com/">Stadia Maps</a> © <a href="https://stamen.com/">Stamen Design</a> © <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                },
+                // ── Transit ──
+                opnvkarte: {
+                    url: "https://tileserver.memomaps.de/tilegen/{z}/{x}/{y}.png",
+                    attr: 'Map <a href="https://memomaps.de/">memomaps.de</a> CC-BY-SA, data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                },
+                openrailway: {
+                    url: "https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png",
+                    attr: 'Data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | Style © <a href="https://www.OpenRailwayMap.org">OpenRailwayMap</a> (CC-BY-SA)',
+                },
+                // ── Special ──
+                nasa_night: {
+                    url: "https://map1.vis.earthdata.nasa.gov/wmts-webmerc/VIIRS_CityLights_2012/default//GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpg",
+                    attr: 'Imagery from <a href="https://earthdata.nasa.gov">NASA ESDIS/GIBS</a>',
+                    maxZoom: 8,
+                },
             };
 
             // ═══════════════════════════════════════════
@@ -1115,10 +1266,12 @@
             // ═══════════════════════════════════════════
             function updateTileLayer() {
                 const key = document.getElementById("tile-layer").value;
+                const tile = TILE_DEFS[key];
+                if (!tile) return;
                 if (currentTileLayer) map.removeLayer(currentTileLayer);
-                currentTileLayer = L.tileLayer(TILE_URLS[key], {
-                    attribution:
-                        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                currentTileLayer = L.tileLayer(buildTileUrl(tile.url), {
+                    attribution: tile.attr,
+                    maxZoom: tile.maxZoom ?? 19,
                 }).addTo(map);
             }
 
@@ -1202,7 +1355,7 @@
                 };
                 const presets = {
                     default: {
-                        tile: "osm",
+                        tile: "osm_hot",
                         hue: 0,
                         sat: 100,
                         con: 100,
